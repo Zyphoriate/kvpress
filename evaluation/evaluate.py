@@ -311,7 +311,9 @@ class EvaluationRunner:
         fraction = self.config.fraction
 
         logger.info(f"Loading dataset: {DATASET_REGISTRY[dataset_name]} (data_dir: {data_dir})")
-        # IFEval uses "train" as the split name for its evaluation examples.
+        # google/IFEval (the raw upstream source) only has a 'train' split.
+        # If a converted kvpress-format dataset is registered instead, remove
+        # this override so the standard 'test' split is used.
         split = "train" if dataset_name == "ifeval" else "test"
         df = load_dataset(DATASET_REGISTRY[dataset_name], data_dir=data_dir, split=split).to_pandas()
 

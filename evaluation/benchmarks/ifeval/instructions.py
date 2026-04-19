@@ -1,334 +1,1058 @@
 # SPDX-FileCopyrightText: Copyright (c) 1993-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Rule-based instruction checkers for IFEval.
-# Based on google-research/instruction_following_eval
-# (commit aa633e5105c702b47a4dd836d9b6eca39984a0fe).
+# Adapted from google-research/instruction_following_eval
+# (commit aa633e5105c702b47a4dd836d9b6eca39984a0fe)
+# Original license: Apache-2.0
+# Changes: replaced `absl.logging` with stdlib `logging`;
+#          made `langdetect` an optional dependency;
+#          replaced `instruction_following_eval.*` imports with local imports.
 
+"""Library of instructions."""
+import collections
 import json
+import logging
+import random
 import re
 import string
-from typing import Optional
+from typing import Dict, Optional, Sequence, Union
+
+from benchmarks.ifeval import instructions_util
+
+logger = logging.getLogger(__name__)
+
+# Optional langdetect import
+try:
+    import langdetect as _langdetect
+
+    _LANGDETECT_AVAILABLE = True
+except ImportError:
+    _langdetect = None  # type: ignore[assignment]
+    _LANGDETECT_AVAILABLE = False
+
+_InstructionArgsDtype = Optional[Dict[str, Union[int, str, Sequence[str]]]]
+
+_LANGUAGES = instructions_util.LANGUAGE_CODES
+
+# The relational operation for comparison.
+_COMPARISON_RELATION = ("less than", "at least")
+
+# The maximum number of sentences.
+_MAX_NUM_SENTENCES = 20
+
+# The number of placeholders.
+_NUM_PLACEHOLDERS = 4
+
+# The number of bullet lists.
+_NUM_BULLETS = 5
+
+# The options of constrained response.
+_CONSTRAINED_RESPONSE_OPTIONS = ("My answer is yes.", "My answer is no.", "My answer is maybe.")
+
+# The options of starter keywords.
+_STARTER_OPTIONS = (
+    "I would say",
+    "My answer is",
+    "I believe",
+    "In my opinion",
+    "I think",
+    "I reckon",
+    "I feel",
+    "From my perspective",
+    "As I see it",
+    "According to me",
+    "As far as I'm concerned",
+    "To my understanding",
+    "In my view",
+    "My take on it is",
+    "As per my perception",
+)
+
+# The options of ending keywords.
+_ENDING_OPTIONS = ("Any other questions?", "Is there anything else I can help with?")
+
+# The number of highlighted sections.
+_NUM_HIGHLIGHTED_SECTIONS = 4
+
+# The section splitter.
+_SECTION_SPLITER = ("Section", "SECTION")
+
+# The number of sections.
+_NUM_SECTIONS = 5
+
+# The number of paragraphs.
+_NUM_PARAGRAPHS = 5
+
+# The postscript marker.
+_POSTSCRIPT_MARKER = ("P.S.", "P.P.S")
+
+# The number of keywords.
+_NUM_KEYWORDS = 2
+
+# The occurrences of a single keyword.
+_KEYWORD_FREQUENCY = 3
+
+# The occurrences of a single letter.
+_LETTER_FREQUENCY = 10
+
+# The occurrences of words with all capital letters.
+_ALL_CAPITAL_WORD_FREQUENCY = 20
+
+# The number of words in the response.
+_NUM_WORDS_LOWER_LIMIT = 100
+_NUM_WORDS_UPPER_LIMIT = 500
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+class Instruction:
+    """An instruction template."""
 
-_COMPARISON_RELATIONS = {
-    "at least": lambda a, b: a >= b,
-    "at most": lambda a, b: a <= b,
-    "exactly": lambda a, b: a == b,
-    "less than": lambda a, b: a < b,
-    "more than": lambda a, b: a > b,
-}
+    def __init__(self, instruction_id):
+        self.id = instruction_id
+
+    def build_description(self, **kwargs):
+        raise NotImplementedError("`build_description` not implemented.")
+
+    def get_instruction_args(self):
+        raise NotImplementedError("`get_instruction_args` not implemented.")
+
+    def get_instruction_args_keys(self):
+        raise NotImplementedError("`get_instruction_args_keys` not implemented.")
+
+    def check_following(self, value):
+        raise NotImplementedError("`check_following` not implemented.")
 
 
-def _compare(value: int, relation: str, target: int) -> bool:
-    fn = _COMPARISON_RELATIONS.get(relation)
-    if fn is None:
+class ResponseLanguageChecker(Instruction):
+    """Check the language of the entire response."""
+
+    def build_description(self, *, language=None):
+        self._language = language
+        if self._language is None:
+            self._language = random.choice(list(_LANGUAGES.keys()))
+        self._description_pattern = (
+            "Your ENTIRE response should be in {language} language, no other language is allowed."
+        )
+        return self._description_pattern.format(language=_LANGUAGES[self._language])
+
+    def get_instruction_args(self):
+        return {"language": self._language}
+
+    def get_instruction_args_keys(self):
+        return ["language"]
+
+    def check_following(self, value):
+        assert isinstance(value, str)
+        if not _LANGDETECT_AVAILABLE:
+            return True
+        try:
+            return _langdetect.detect(value) == self._language
+        except Exception as e:
+            logger.error("Unable to detect language for text %s due to %s", value, e)
+            return True
+
+
+class NumberOfSentences(Instruction):
+    """Check the number of sentences."""
+
+    def build_description(self, *, num_sentences=None, relation=None):
+        self._num_sentences_threshold = num_sentences
+        if self._num_sentences_threshold is None or self._num_sentences_threshold < 0:
+            self._num_sentences_threshold = random.randint(1, _MAX_NUM_SENTENCES)
+
+        if relation is None:
+            self._comparison_relation = random.choice(_COMPARISON_RELATION)
+        elif relation not in _COMPARISON_RELATION:
+            raise ValueError(
+                f"The supported relation for comparison must be in {_COMPARISON_RELATION}, but {relation} is given."
+            )
+        else:
+            self._comparison_relation = relation
+
+        self._description_pattern = "Your response should contain {relation} {num_sentences} sentences."
+        return self._description_pattern.format(
+            relation=self._comparison_relation,
+            num_sentences=self._num_sentences_threshold,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "num_sentences": self._num_sentences_threshold,
+            "relation": self._comparison_relation,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["num_sentences", "relation"]
+
+    def check_following(self, value):
+        num_sentences = instructions_util.count_sentences(value)
+        if self._comparison_relation == _COMPARISON_RELATION[0]:
+            return num_sentences < self._num_sentences_threshold
+        elif self._comparison_relation == _COMPARISON_RELATION[1]:
+            return num_sentences >= self._num_sentences_threshold  # type: ignore[return-value]
+
+
+class PlaceholderChecker(Instruction):
+    """Check the placeholders in template writing."""
+
+    def build_description(self, *, num_placeholders=None):
+        self._num_placeholders = num_placeholders
+        if self._num_placeholders is None or self._num_placeholders < 0:
+            self._num_placeholders = random.randint(1, _NUM_PLACEHOLDERS)
+        self._description_pattern = (
+            "The response must contain at least {num_placeholders} placeholders "
+            "represented by square brackets, such as [address]."
+        )
+        return self._description_pattern.format(num_placeholders=self._num_placeholders)
+
+    def get_instruction_args(self):
+        return {"num_placeholders": self._num_placeholders}
+
+    def get_instruction_args_keys(self):
+        return ["num_placeholders"]
+
+    def check_following(self, value):
+        placeholders = re.findall(r"\[.*?\]", value)
+        return len(placeholders) >= self._num_placeholders
+
+
+class BulletListChecker(Instruction):
+    """Checks the bullet list in the prompt."""
+
+    def build_description(self, *, num_bullets=None):
+        self._num_bullets = num_bullets
+        if self._num_bullets is None or self._num_bullets < 0:
+            self._num_bullets = random.randint(1, _NUM_BULLETS)
+        self._description_pattern = (
+            "Your answer must contain exactly {num_bullets} bullet points. "
+            "Use the markdown bullet points such as:\n"
+            "* This is point 1. \n"
+            "* This is point 2"
+        )
+        return self._description_pattern.format(num_bullets=self._num_bullets)
+
+    def get_instruction_args(self):
+        return {"num_bullets": self._num_bullets}
+
+    def get_instruction_args_keys(self):
+        return ["num_bullets"]
+
+    def check_following(self, value):
+        bullet_lists = re.findall(r"^\s*\*[^\*].*$", value, flags=re.MULTILINE)
+        bullet_lists_2 = re.findall(r"^\s*-.*$", value, flags=re.MULTILINE)
+        num_bullet_lists = len(bullet_lists) + len(bullet_lists_2)
+        return num_bullet_lists == self._num_bullets
+
+
+class ConstrainedResponseChecker(Instruction):
+    """Checks the constrained response."""
+
+    def build_description(self):
+        self._constrained_responses = _CONSTRAINED_RESPONSE_OPTIONS
+        self._description_pattern = "Answer with one of the following options: {response_options}"
+        return self._description_pattern.format(response_options=self._constrained_responses)
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        value = value.strip()
+        for constrained_response in self._constrained_responses:
+            if constrained_response in value:
+                return True
         return False
-    return fn(value, target)
 
 
-def _count_words(text: str) -> int:
-    return len(text.split())
+class ConstrainedStartChecker(Instruction):
+    """Checks the response start."""
+
+    def build_description(self, *, starter=None):
+        self._starter = starter.strip() if isinstance(starter, str) else starter
+        if self._starter is None:
+            self._starter = random.choice(_STARTER_OPTIONS)
+        self._description_pattern = (
+            "During the conversation, when it is your turn, please always start with {starter}"
+        )
+        return self._description_pattern.format(starter=self._starter)
+
+    def get_instruction_args(self):
+        return {"starter": self._starter}
+
+    def get_instruction_args_keys(self):
+        return ["starter"]
+
+    def check_following(self, value):
+        response_pattern = r"^\s*" + self._starter + r".*$"
+        response_with_constrained_start = re.search(response_pattern, value, flags=re.MULTILINE)
+        return True if response_with_constrained_start else False
 
 
-def _count_sentences(text: str) -> int:
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
-    return len([s for s in sentences if s.strip()])
+class HighlightSectionChecker(Instruction):
+    """Checks the highlighted section."""
+
+    def build_description(self, *, num_highlights=None):
+        self._num_highlights = num_highlights
+        if self._num_highlights is None or self._num_highlights < 0:
+            self._num_highlights = random.randint(1, _NUM_HIGHLIGHTED_SECTIONS)
+        self._description_pattern = (
+            "Highlight at least {num_highlights} sections in your answer with markdown, i.e. *highlighted section*."
+        )
+        return self._description_pattern.format(num_highlights=self._num_highlights)
+
+    def get_instruction_args(self):
+        return {"num_highlights": self._num_highlights}
+
+    def get_instruction_args_keys(self):
+        return ["num_highlights"]
+
+    def check_following(self, value):
+        num_highlights = 0
+        highlights = re.findall(r"\*[^\n\*]*\*", value)
+        double_highlights = re.findall(r"\*\*[^\n\*]*\*\*", value)
+        for highlight in highlights:
+            if highlight.strip("*").strip():
+                num_highlights += 1
+        for highlight in double_highlights:
+            if highlight.removeprefix("**").removesuffix("**").strip():
+                num_highlights += 1
+        return num_highlights >= self._num_highlights
 
 
-def _get_paragraphs(text: str) -> list:
-    paras = re.split(r"\n\s*\n", text.strip())
-    return [p.strip() for p in paras if p.strip()]
+class SectionChecker(Instruction):
+    """Checks the sections."""
+
+    def build_description(self, *, section_spliter=None, num_sections=None):
+        self._section_spliter = section_spliter.strip() if isinstance(section_spliter, str) else section_spliter
+        if self._section_spliter is None:
+            self._section_spliter = random.choice(_SECTION_SPLITER)
+        self._num_sections = num_sections
+        if self._num_sections is None or self._num_sections < 0:
+            self._num_sections = random.randint(1, _NUM_SECTIONS)
+        self._description_pattern = (
+            "Your response must have {num_sections} sections. Mark the beginning "
+            "of each section with {section_spliter} X, such as:\n"
+            "{section_spliter} 1\n"
+            "[content of section 1]\n"
+            "{section_spliter} 2\n"
+            "[content of section 2]"
+        )
+        return self._description_pattern.format(
+            num_sections=self._num_sections,
+            section_spliter=self._section_spliter,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "section_spliter": self._section_spliter,
+            "num_sections": self._num_sections,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["section_spliter", "num_sections"]
+
+    def check_following(self, value):
+        section_splitter_patten = r"\s?" + self._section_spliter + r"\s?\d+\s?"
+        sections = re.split(section_splitter_patten, value)
+        num_sections = len(sections) - 1
+        return num_sections >= self._num_sections
 
 
-# ---------------------------------------------------------------------------
-# Keyword instructions
-# ---------------------------------------------------------------------------
+class ParagraphChecker(Instruction):
+    """Checks the paragraphs."""
+
+    def build_description(self, *, num_paragraphs=None):
+        self._num_paragraphs = num_paragraphs
+        if self._num_paragraphs is None or self._num_paragraphs < 0:
+            self._num_paragraphs = random.randint(1, _NUM_PARAGRAPHS)
+        self._description_pattern = (
+            "There should be {num_paragraphs} paragraphs. "
+            "Paragraphs are separated with the markdown divider: ***"
+        )
+        return self._description_pattern.format(num_paragraphs=self._num_paragraphs)
+
+    def get_instruction_args(self):
+        return {"num_paragraphs": self._num_paragraphs}
+
+    def get_instruction_args_keys(self):
+        return ["num_paragraphs"]
+
+    def check_following(self, value):
+        paragraphs = re.split(r"\s?\*\*\*\s?", value)
+        num_paragraphs = len(paragraphs)
+        for index, paragraph in enumerate(paragraphs):
+            if not paragraph.strip():
+                if index == 0 or index == len(paragraphs) - 1:
+                    num_paragraphs -= 1
+                else:
+                    return False
+        return num_paragraphs == self._num_paragraphs
 
 
-def check_keywords_existence(response: str, keywords: list, **kwargs) -> bool:
-    """All given keywords must appear in the response (case-insensitive)."""
-    response_lower = response.lower()
-    return all(kw.lower() in response_lower for kw in keywords)
+class PostscriptChecker(Instruction):
+    """Checks the postscript."""
+
+    def build_description(self, *, postscript_marker=None):
+        self._postscript_marker = postscript_marker.strip() if isinstance(postscript_marker, str) else postscript_marker
+        if self._postscript_marker is None:
+            self._postscript_marker = random.choice(_POSTSCRIPT_MARKER)
+        self._description_pattern = (
+            "At the end of your response, please explicitly add a postscript starting with {postscript}"
+        )
+        return self._description_pattern.format(postscript=self._postscript_marker)
+
+    def get_instruction_args(self):
+        return {"postscript_marker": self._postscript_marker}
+
+    def get_instruction_args_keys(self):
+        return ["postscript_marker"]
+
+    def check_following(self, value):
+        value = value.lower()
+        if self._postscript_marker == "P.P.S":
+            postscript_pattern = r"\s*p\.\s?p\.\s?s.*$"
+        elif self._postscript_marker == "P.S.":
+            postscript_pattern = r"\s*p\.\s?s\..*$"
+        else:
+            postscript_pattern = r"\s*" + self._postscript_marker.lower() + r".*$"
+        postscript = re.findall(postscript_pattern, value, flags=re.MULTILINE)
+        return True if postscript else False
 
 
-def check_keywords_frequency(response: str, keyword: str, frequency: int, relation: str, **kwargs) -> bool:
-    """Keyword must appear with the required frequency."""
-    count = response.lower().count(keyword.lower())
-    return _compare(count, relation, frequency)
+class RephraseChecker(Instruction):
+    """Checks the rephrase."""
+
+    def build_description(self, *, original_message):
+        if not self.is_change(original_message):
+            raise ValueError(
+                f"Message {original_message} does not contain changes in the form of *change me*."
+            )
+        self._reference_without_change = original_message
+        self._description = (
+            "Rephrasing: Your rephrased response should only"
+            "change the words/sentences in between two asterisks"
+            "such as *change me*."
+        )
+        return self._description
+
+    def get_instruction_args(self):
+        return {"original_message": self._reference_without_change}
+
+    def get_instruction_args_keys(self):
+        return ["original_message"]
+
+    def check_following(self, value):
+        if not self.is_change(value):
+            raise ValueError(f"value {value} does not contain changes in the form of *change me*.")
+        response_without_changes = self.strip_changes(value)
+        reference_without_changes = self.strip_changes(self._reference_without_change)
+        return response_without_changes == reference_without_changes
+
+    def is_change(self, response):
+        return re.search(r"\*.*\*", response)
+
+    def strip_changes(self, response):
+        return re.sub(r"\*.*\*", "", response)
 
 
-def check_keywords_forbidden_words(response: str, forbidden_words: list, **kwargs) -> bool:
-    """None of the forbidden words may appear in the response (case-insensitive)."""
-    response_lower = response.lower()
-    return not any(fw.lower() in response_lower for fw in forbidden_words)
+class KeywordChecker(Instruction):
+    """Check the existence of certain keywords."""
 
+    def build_description(self, *, keywords=None):
+        if not keywords:
+            self._keywords = instructions_util.generate_keywords(num_keywords=_NUM_KEYWORDS)
+        else:
+            self._keywords = keywords
+        self._keywords = sorted(self._keywords)
+        self._description_pattern = "Include keywords {keywords} in the response."
+        return self._description_pattern.format(keywords=self._keywords)
 
-def check_keywords_letter_frequency(
-    response: str, letter: str, let_frequency: int, let_relation: str, **kwargs
-) -> bool:
-    """A specific letter must appear with the required frequency."""
-    count = response.lower().count(letter.lower())
-    return _compare(count, let_relation, let_frequency)
+    def get_instruction_args(self):
+        return {"keywords": self._keywords}
 
+    def get_instruction_args_keys(self):
+        return ["keywords"]
 
-# ---------------------------------------------------------------------------
-# Language instruction
-# ---------------------------------------------------------------------------
-
-
-def check_language_response_language(response: str, language: str, **kwargs) -> bool:
-    """Response must be in the specified language (ISO 639-1 code).
-
-    Falls back to True when *langdetect* is not installed to avoid hard
-    failures in environments that don't have the package.
-    """
-    try:
-        from langdetect import detect  # type: ignore[import]
-
-        detected = detect(response)
-        return detected == language
-    except ImportError:
-        # langdetect not installed – skip check
+    def check_following(self, value):
+        for keyword in self._keywords:
+            if not re.search(keyword, value, flags=re.IGNORECASE):
+                return False
         return True
-    except Exception:
-        return False
 
 
-# ---------------------------------------------------------------------------
-# Length constraints
-# ---------------------------------------------------------------------------
+class KeywordFrequencyChecker(Instruction):
+    """Check the keyword frequency."""
+
+    def build_description(self, *, keyword=None, frequency=None, relation=None):
+        if not keyword:
+            self._keyword = instructions_util.generate_keywords(num_keywords=1)[0]
+        else:
+            self._keyword = keyword.strip()
+
+        self._frequency = frequency
+        if self._frequency is None or self._frequency < 0:
+            self._frequency = random.randint(1, _KEYWORD_FREQUENCY)
+
+        if relation is None:
+            self._comparison_relation = random.choice(_COMPARISON_RELATION)
+        elif relation not in _COMPARISON_RELATION:
+            raise ValueError(
+                f"The supported relation for comparison must be in {_COMPARISON_RELATION}, but {relation} is given."
+            )
+        else:
+            self._comparison_relation = relation
+
+        self._description_pattern = (
+            "In your response, the word {keyword} should appear {relation} {frequency} times."
+        )
+        return self._description_pattern.format(
+            keyword=self._keyword,
+            relation=self._comparison_relation,
+            frequency=self._frequency,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "keyword": self._keyword,
+            "frequency": self._frequency,
+            "relation": self._comparison_relation,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["keyword", "frequency", "relation"]
+
+    def check_following(self, value):
+        actual_occurrences = len(re.findall(self._keyword, value, flags=re.IGNORECASE))
+        if self._comparison_relation == _COMPARISON_RELATION[0]:
+            return actual_occurrences < self._frequency
+        elif self._comparison_relation == _COMPARISON_RELATION[1]:
+            return actual_occurrences >= self._frequency  # type: ignore[return-value]
 
 
-def check_length_number_sentences(response: str, num_sentences: int, relation: str, **kwargs) -> bool:
-    count = _count_sentences(response)
-    return _compare(count, relation, num_sentences)
+class NumberOfWords(Instruction):
+    """Checks the number of words."""
+
+    def build_description(self, *, num_words=None, relation=None):
+        self._num_words = num_words
+        if self._num_words is None or self._num_words < 0:
+            self._num_words = random.randint(_NUM_WORDS_LOWER_LIMIT, _NUM_WORDS_UPPER_LIMIT)
+
+        if relation is None:
+            self._comparison_relation = random.choice(_COMPARISON_RELATION)
+        elif relation not in _COMPARISON_RELATION:
+            raise ValueError(
+                f"The supported relation for comparison must be in {_COMPARISON_RELATION}, but {relation} is given."
+            )
+        else:
+            self._comparison_relation = relation
+
+        self._description_pattern = "Answer with {relation} {num_words} words."
+        return self._description_pattern.format(
+            relation=self._comparison_relation,
+            num_words=self._num_words,
+        )
+
+    def get_instruction_args(self):
+        return {"num_words": self._num_words, "relation": self._comparison_relation}
+
+    def get_instruction_args_keys(self):
+        return ["num_words", "relation"]
+
+    def check_following(self, value):
+        num_words = instructions_util.count_words(value)
+        if self._comparison_relation == _COMPARISON_RELATION[0]:
+            return num_words < self._num_words
+        elif self._comparison_relation == _COMPARISON_RELATION[1]:
+            return num_words >= self._num_words  # type: ignore[return-value]
 
 
-def check_length_number_paragraphs(response: str, num_paragraphs: int, **kwargs) -> bool:
-    count = len(_get_paragraphs(response))
-    return count >= num_paragraphs
+class JsonFormat(Instruction):
+    """Check the JSON format."""
 
+    def build_description(self):
+        self._description_pattern = (
+            "Entire output should be wrapped in JSON format. You can use markdown ticks such as ```."
+        )
+        return self._description_pattern
 
-def check_length_number_words(response: str, num_words: int, relation: str, **kwargs) -> bool:
-    count = _count_words(response)
-    return _compare(count, relation, num_words)
+    def get_instruction_args(self):
+        return None
 
+    def get_instruction_args_keys(self):
+        return []
 
-def check_length_nth_paragraph_first_word(
-    response: str, num_paragraphs: int, nth_paragraph: int, first_word: str, **kwargs
-) -> bool:
-    """The nth paragraph must start with the given word and total paragraphs
-    must equal *num_paragraphs*."""
-    paragraphs = _get_paragraphs(response)
-    if len(paragraphs) < num_paragraphs:
-        return False
-    if nth_paragraph < 1 or nth_paragraph > len(paragraphs):
-        return False
-    first = paragraphs[nth_paragraph - 1].split()[0] if paragraphs[nth_paragraph - 1].split() else ""
-    return first.lower().strip(string.punctuation) == first_word.lower().strip(string.punctuation)
-
-
-# ---------------------------------------------------------------------------
-# Detectable content
-# ---------------------------------------------------------------------------
-
-
-def check_detectable_content_number_placeholders(response: str, num_placeholders: int, **kwargs) -> bool:
-    """Response must contain at least *num_placeholders* placeholder tokens
-    of the form ``[something]``."""
-    placeholders = re.findall(r"\[.+?\]", response)
-    return len(placeholders) >= num_placeholders
-
-
-def check_detectable_content_postscript(response: str, postscript_marker: str, **kwargs) -> bool:
-    """Response must contain a postscript section starting with *postscript_marker*."""
-    return postscript_marker.lower() in response.lower()
-
-
-# ---------------------------------------------------------------------------
-# Detectable format
-# ---------------------------------------------------------------------------
-
-
-def check_detectable_format_number_bullet_lists(response: str, num_bullets: int, **kwargs) -> bool:
-    """Response must contain at least *num_bullets* bullet-list items (lines
-    starting with ``-``, ``*``, or ``•``)."""
-    bullets = re.findall(r"^\s*[-*•]\s+", response, re.MULTILINE)
-    return len(bullets) >= num_bullets
-
-
-def check_detectable_format_constrained_response(response: str, **kwargs) -> bool:
-    """Response must be a single word / short phrase without explanation.
-    This check verifies the response is concise (at most 3 words)."""
-    return _count_words(response.strip()) <= 3
-
-
-def check_detectable_format_number_highlighted_sections(response: str, num_highlights: int, **kwargs) -> bool:
-    """Response must contain at least *num_highlights* sections highlighted
-    with markdown bold (``**text**``) or italic (``*text*``)."""
-    highlights = re.findall(r"\*+[^*\n]+\*+", response)
-    return len(highlights) >= num_highlights
-
-
-def check_detectable_format_multiple_sections(
-    response: str, section_splitter: str, num_sections: int, **kwargs
-) -> bool:
-    """Response must contain at least *num_sections* section headers using
-    *section_splitter* (e.g. ``###``)."""
-    pattern = re.escape(section_splitter)
-    headers = re.findall(rf"^{pattern}\s+\S", response, re.MULTILINE)
-    return len(headers) >= num_sections
-
-
-def check_detectable_format_json_format(response: str, **kwargs) -> bool:
-    """Response must be valid JSON (possibly wrapped in a markdown code fence)."""
-    # Strip markdown code fences
-    text = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
-    try:
-        json.loads(text)
+    def check_following(self, value):
+        value = (
+            value.strip()
+            .removeprefix("```json")
+            .removeprefix("```Json")
+            .removeprefix("```JSON")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+        try:
+            json.loads(value)
+        except ValueError:
+            return False
         return True
-    except (json.JSONDecodeError, ValueError):
-        return False
 
 
-def check_detectable_format_title(response: str, **kwargs) -> bool:
-    """Response must contain at least one markdown title (``# Title``)."""
-    return bool(re.search(r"^#{1,6}\s+\S", response, re.MULTILINE))
+class ParagraphFirstWordCheck(Instruction):
+    """Check the paragraph and the first word of the nth paragraph."""
+
+    def build_description(self, num_paragraphs=None, nth_paragraph=None, first_word=None):
+        self._num_paragraphs = num_paragraphs
+        if self._num_paragraphs is None or self._num_paragraphs < 0:
+            self._num_paragraphs = random.randint(1, _NUM_PARAGRAPHS)
+
+        self._nth_paragraph = nth_paragraph
+        if (
+            self._nth_paragraph is None
+            or self._nth_paragraph <= 0
+            or self._nth_paragraph > self._num_paragraphs
+        ):
+            self._nth_paragraph = random.randint(1, self._num_paragraphs + 1)
+
+        self._first_word = first_word
+        if self._first_word is None:
+            self._first_word = instructions_util.generate_keywords(num_keywords=1)[0]
+        self._first_word = self._first_word.lower()
+
+        self._description_pattern = (
+            "There should be {num_paragraphs} paragraphs. "
+            "Paragraphs and only paragraphs are separated with each other by two "
+            "new lines as if it was '\\n\\n' in python. "
+            "Paragraph {nth_paragraph} must start with word {first_word}."
+        )
+        return self._description_pattern.format(
+            num_paragraphs=self._num_paragraphs,
+            nth_paragraph=self._nth_paragraph,
+            first_word=self._first_word,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "num_paragraphs": self._num_paragraphs,
+            "nth_paragraph": self._nth_paragraph,
+            "first_word": self._first_word,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["num_paragraphs", "nth_paragraph", "first_word"]
+
+    def check_following(self, value):
+        paragraphs = re.split(r"\n\n", value)
+        num_paragraphs = len(paragraphs)
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                num_paragraphs -= 1
+        if self._nth_paragraph <= num_paragraphs:
+            paragraph = paragraphs[self._nth_paragraph - 1].strip()
+            if not paragraph:
+                return False
+        else:
+            return False
+
+        first_word = ""
+        punctuation = {".", ",", "?", "!", "'", '"'}
+        word = paragraph.split()[0].strip()
+        word = word.lstrip("'")
+        word = word.lstrip('"')
+        for letter in word:
+            if letter in punctuation:
+                break
+            first_word += letter.lower()
+
+        return num_paragraphs == self._num_paragraphs and first_word == self._first_word
 
 
-# ---------------------------------------------------------------------------
-# Combination instructions
-# ---------------------------------------------------------------------------
+class KeySentenceChecker(Instruction):
+    """Check the existence of certain key sentences."""
+
+    def build_description(self, key_sentences=None, num_sentences=None):
+        if not key_sentences:
+            self._key_sentences = set(["For now, this is fine."])
+        else:
+            self._key_sentences = key_sentences
+
+        if not num_sentences:
+            self._num_sentences = random.randint(1, len(self._key_sentences))
+        else:
+            self._num_sentences = num_sentences
+
+        self._description_pattern = "Include {num_sentences} of the following sentences {key_sentences}"
+        return self._description_pattern.format(
+            num_sentences=self._num_sentences,
+            key_sentences=self._key_sentences,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "num_sentences": self._num_sentences,
+            "key_sentences": list(self._key_sentences),
+        }
+
+    def get_instruction_args_keys(self):
+        return ["num_sentences", "key_sentences"]
+
+    def check_following(self, value):
+        count = 0
+        sentences = instructions_util.split_into_sentences(value)
+        for sentence in self._key_sentences:
+            if sentence in sentences:
+                count += 1
+        return count == self._num_sentences
 
 
-def check_combination_two_responses(response: str, **kwargs) -> bool:
-    """Response must contain two parts separated by ``******`` or six or more
-    asterisks on a line by themselves."""
-    return bool(re.search(r"\*{6,}", response))
+class ForbiddenWords(Instruction):
+    """Checks that specified words are not used in response."""
 
+    def build_description(self, forbidden_words=None):
+        if not forbidden_words:
+            self._forbidden_words = instructions_util.generate_keywords(num_keywords=_NUM_KEYWORDS)
+        else:
+            self._forbidden_words = list(set(forbidden_words))
+        self._forbidden_words = sorted(self._forbidden_words)
+        self._description_pattern = "Do not include keywords {forbidden_words} in the response."
+        return self._description_pattern.format(forbidden_words=self._forbidden_words)
 
-def check_combination_repeat_prompt(response: str, prompt_to_repeat: str, **kwargs) -> bool:
-    """Response must begin by repeating the prompt verbatim."""
-    return response.strip().startswith(prompt_to_repeat.strip())
+    def get_instruction_args(self):
+        return {"forbidden_words": self._forbidden_words}
 
+    def get_instruction_args_keys(self):
+        return ["forbidden_words"]
 
-# ---------------------------------------------------------------------------
-# Start / end instructions
-# ---------------------------------------------------------------------------
-
-
-def check_startend_end_checker(response: str, end_phrase: str, **kwargs) -> bool:
-    """Response must end with *end_phrase* (case-insensitive, ignoring
-    trailing whitespace / punctuation)."""
-    cleaned = response.rstrip()
-    return cleaned.lower().endswith(end_phrase.lower())
-
-
-def check_startend_quotation(response: str, **kwargs) -> bool:
-    """Response must be wrapped in double quotation marks."""
-    stripped = response.strip()
-    return stripped.startswith('"') and stripped.endswith('"')
-
-
-# ---------------------------------------------------------------------------
-# Change-case instructions
-# ---------------------------------------------------------------------------
-
-
-def check_change_case_capital_word_frequency(
-    response: str, capital_frequency: int, capital_relation: str, **kwargs
-) -> bool:
-    """A certain proportion of words must be fully capitalised."""
-    words = response.split()
-    if not words:
-        return False
-    capital_words = [w for w in words if w.isupper() and w.isalpha()]
-    return _compare(len(capital_words), capital_relation, capital_frequency)
-
-
-def check_change_case_english_capital(response: str, **kwargs) -> bool:
-    """Entire response must be in uppercase (ignoring non-alpha characters)."""
-    alpha_chars = [c for c in response if c.isalpha()]
-    return bool(alpha_chars) and all(c.isupper() for c in alpha_chars)
-
-
-def check_change_case_english_lowercase(response: str, **kwargs) -> bool:
-    """Entire response must be in lowercase (ignoring non-alpha characters)."""
-    alpha_chars = [c for c in response if c.isalpha()]
-    return bool(alpha_chars) and all(c.islower() for c in alpha_chars)
-
-
-# ---------------------------------------------------------------------------
-# Punctuation instructions
-# ---------------------------------------------------------------------------
-
-
-def check_punctuation_no_comma(response: str, **kwargs) -> bool:
-    """Response must not contain any comma."""
-    return "," not in response
-
-
-# ---------------------------------------------------------------------------
-# Dispatcher
-# ---------------------------------------------------------------------------
-
-_CHECKER_MAP = {
-    "keywords:existence": check_keywords_existence,
-    "keywords:frequency": check_keywords_frequency,
-    "keywords:forbidden_words": check_keywords_forbidden_words,
-    "keywords:letter_frequency": check_keywords_letter_frequency,
-    "language:response_language": check_language_response_language,
-    "length_constraints:number_sentences": check_length_number_sentences,
-    "length_constraints:number_paragraphs": check_length_number_paragraphs,
-    "length_constraints:number_words": check_length_number_words,
-    "length_constraints:nth_paragraph_first_word": check_length_nth_paragraph_first_word,
-    "detectable_content:number_placeholders": check_detectable_content_number_placeholders,
-    "detectable_content:postscript": check_detectable_content_postscript,
-    "detectable_format:number_bullet_lists": check_detectable_format_number_bullet_lists,
-    "detectable_format:constrained_response": check_detectable_format_constrained_response,
-    "detectable_format:number_highlighted_sections": check_detectable_format_number_highlighted_sections,
-    "detectable_format:multiple_sections": check_detectable_format_multiple_sections,
-    "detectable_format:json_format": check_detectable_format_json_format,
-    "detectable_format:title": check_detectable_format_title,
-    "combination:two_responses": check_combination_two_responses,
-    "combination:repeat_prompt": check_combination_repeat_prompt,
-    "startend:end_checker": check_startend_end_checker,
-    "startend:quotation": check_startend_quotation,
-    "change_case:capital_word_frequency": check_change_case_capital_word_frequency,
-    "change_case:english_capital": check_change_case_english_capital,
-    "change_case:english_lowercase": check_change_case_english_lowercase,
-    "punctuation:no_comma": check_punctuation_no_comma,
-}
-
-
-def check_instruction(instruction_id: str, response: str, kwargs: Optional[dict] = None) -> bool:
-    """Return True if *response* satisfies the instruction identified by
-    *instruction_id*.
-
-    Parameters
-    ----------
-    instruction_id:
-        Instruction identifier in the form ``category:subcategory``.
-    response:
-        The model-generated text to evaluate.
-    kwargs:
-        Keyword arguments specific to the instruction (may be ``None`` or
-        an empty dict for instructions that require no parameters).
-    """
-    if kwargs is None:
-        kwargs = {}
-    checker = _CHECKER_MAP.get(instruction_id)
-    if checker is None:
-        # Unknown instruction type – conservatively return True so as not to
-        # penalise models for instructions we cannot verify.
+    def check_following(self, value):
+        for word in self._forbidden_words:
+            if re.search(r"\b" + word + r"\b", value, flags=re.IGNORECASE):
+                return False
         return True
-    try:
-        return bool(checker(response, **kwargs))
-    except Exception:
+
+
+class RephraseParagraph(Instruction):
+    """Checks that the paragraph is rephrased."""
+
+    def build_description(self, *, original_paragraph, low, high):
+        self._original_paragraph = original_paragraph
+        self._low = low
+        self._high = high
+        self._description = (
+            "Rephrase the following paragraph: "
+            "{original_paragraph}\nYour response should have "
+            "between {low} and {high} of the same words. "
+            "Words are the same if and only if all of the "
+            "letters, ignoring cases, are the same. For "
+            "example, 'run' is the same as 'Run' but different "
+            "to 'ran'."
+        )
+        return self._description.format(
+            original_paragraph=original_paragraph,
+            low=self._low,
+            high=self._high,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "original_paragraph": self._original_paragraph,
+            "low": self._low,
+            "high": self._high,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["original_paragraph", "low", "high"]
+
+    def check_following(self, value):
+        val_words = re.findall(r"\w+", value.lower())
+        original_words = re.findall(r"\w+", self._original_paragraph.lower())
+        similar_words = 0
+        dict_val = collections.Counter(val_words)
+        dict_original = collections.Counter(original_words)
+        for word in dict_original:
+            similar_words += min(dict_original[word], dict_val[word])
+        return similar_words >= self._low and similar_words <= self._high
+
+
+class TwoResponsesChecker(Instruction):
+    """Check that two responses were given."""
+
+    def build_description(self):
+        self._description_pattern = (
+            "Give two different responses. Responses and only responses should be separated by 6 asterisk symbols:"
+            " ******."
+        )
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        valid_responses = list()
+        responses = value.split("******")
+        for index, response in enumerate(responses):
+            if not response.strip():
+                if index != 0 and index != len(responses) - 1:
+                    return False
+            else:
+                valid_responses.append(response)
+        return len(valid_responses) == 2 and valid_responses[0].strip() != valid_responses[1].strip()
+
+
+class RepeatPromptThenAnswer(Instruction):
+    """Checks that Prompt is first repeated then answered."""
+
+    def build_description(self, *, prompt_to_repeat=None):
+        if not prompt_to_repeat:
+            raise ValueError("prompt_to_repeat must be set.")
+        else:
+            self._prompt_to_repeat = prompt_to_repeat
+        self._description_pattern = (
+            "First repeat the request word for word without change,"
+            " then give your answer (1. do not say any words or characters"
+            " before repeating the request; 2. the request you need to repeat"
+            " does not include this sentence)"
+        )
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return {"prompt_to_repeat": self._prompt_to_repeat}
+
+    def get_instruction_args_keys(self):
+        return ["prompt_to_repeat"]
+
+    def check_following(self, value):
+        if value.strip().lower().startswith(self._prompt_to_repeat.strip().lower()):
+            return True
         return False
+
+
+class EndChecker(Instruction):
+    """Checks that the prompt ends with a given phrase."""
+
+    def build_description(self, *, end_phrase=None):
+        self._end_phrase = end_phrase.strip() if isinstance(end_phrase, str) else end_phrase
+        if self._end_phrase is None:
+            self._end_phrase = random.choice(_ENDING_OPTIONS)
+        self._description_pattern = (
+            "Finish your response with this exact phrase {ender}. No other words should follow this phrase."
+        )
+        return self._description_pattern.format(ender=self._end_phrase)
+
+    def get_instruction_args(self):
+        return {"end_phrase": self._end_phrase}
+
+    def get_instruction_args_keys(self):
+        return ["end_phrase"]
+
+    def check_following(self, value):
+        value = value.strip().strip('"').lower()
+        self._end_phrase = self._end_phrase.strip().lower()
+        return value.endswith(self._end_phrase)
+
+
+class TitleChecker(Instruction):
+    """Checks the response for a title."""
+
+    def build_description(self):
+        self._description_pattern = (
+            "Your answer must contain a title, wrapped in double angular brackets, such as <<poem of joy>>."
+        )
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        pattern = r"<<[^\n]+>>"
+        re_pattern = re.compile(pattern)
+        titles = re.findall(re_pattern, value)
+        for title in titles:
+            if title.lstrip("<").rstrip(">").strip():
+                return True
+        return False
+
+
+class LetterFrequencyChecker(Instruction):
+    """Checks letter frequency."""
+
+    def build_description(self, *, letter=None, let_frequency=None, let_relation=None):
+        if not letter or len(letter) > 1 or ord(letter.lower()) < 97 or ord(letter.lower()) > 122:
+            self._letter = random.choice(list(string.ascii_letters))
+        else:
+            self._letter = letter.strip()
+        self._letter = self._letter.lower()
+
+        self._frequency = let_frequency
+        if self._frequency is None or self._frequency < 0:
+            self._frequency = random.randint(1, _LETTER_FREQUENCY)
+
+        if let_relation is None:
+            self._comparison_relation = random.choice(_COMPARISON_RELATION)
+        elif let_relation not in _COMPARISON_RELATION:
+            raise ValueError(
+                f"The supported relation for comparison must be in {_COMPARISON_RELATION}, but {let_relation} is given."
+            )
+        else:
+            self._comparison_relation = let_relation
+
+        self._description_pattern = (
+            "In your response, the letter {letter} should appear {let_relation} {let_frequency} times."
+        )
+        return self._description_pattern.format(
+            letter=self._letter,
+            let_frequency=self._frequency,
+            let_relation=self._comparison_relation,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "letter": self._letter,
+            "let_frequency": self._frequency,
+            "let_relation": self._comparison_relation,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["letter", "let_frequency", "let_relation"]
+
+    def check_following(self, value):
+        value = value.lower()
+        letters = collections.Counter(value)
+        if self._comparison_relation == _COMPARISON_RELATION[0]:
+            return letters[self._letter] < self._frequency
+        else:
+            return letters[self._letter] >= self._frequency
+
+
+class CapitalLettersEnglishChecker(Instruction):
+    """Checks that the response is in English and is in all capital letters."""
+
+    def build_description(self):
+        self._description_pattern = "Your entire response should be in English, and in all capital letters."
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        assert isinstance(value, str)
+        if not _LANGDETECT_AVAILABLE:
+            return value.isupper()
+        try:
+            return value.isupper() and _langdetect.detect(value) == "en"
+        except Exception as e:
+            logger.error("Unable to detect language for text %s due to %s", value, e)
+            return True
+
+
+class LowercaseLettersEnglishChecker(Instruction):
+    """Checks that the response is in English and is in all lowercase letters."""
+
+    def build_description(self):
+        self._description_pattern = (
+            "Your entire response should be in English, and in all lowercase letters. No capital letters are allowed."
+        )
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        assert isinstance(value, str)
+        if not _LANGDETECT_AVAILABLE:
+            return value.islower()
+        try:
+            return value.islower() and _langdetect.detect(value) == "en"
+        except Exception as e:
+            logger.error("Unable to detect language for text %s due to %s", value, e)
+            return True
+
+
+class CommaChecker(Instruction):
+    """Checks the response for no commas."""
+
+    def build_description(self):
+        self._description_pattern = "In your entire response, refrain from the use of any commas."
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        return not re.search(r"\,", value)
+
+
+class CapitalWordFrequencyChecker(Instruction):
+    """Checks frequency of words with all capital letters."""
+
+    def build_description(self, capital_frequency=None, capital_relation=None):
+        self._frequency = capital_frequency
+        if self._frequency is None:
+            self._frequency = random.randint(1, _ALL_CAPITAL_WORD_FREQUENCY)
+
+        self._comparison_relation = capital_relation
+        if capital_relation is None:
+            self._comparison_relation = random.choice(_COMPARISON_RELATION)
+        elif capital_relation not in _COMPARISON_RELATION:
+            raise ValueError(
+                f"The supported relation for comparison must be in {_COMPARISON_RELATION},"
+                f" but {capital_relation} is given."
+            )
+
+        self._description_pattern = (
+            "In your response, words with all capital letters should appear {relation} {frequency} times."
+        )
+        return self._description_pattern.format(
+            frequency=self._frequency,
+            relation=self._comparison_relation,
+        )
+
+    def get_instruction_args(self):
+        return {
+            "capital_frequency": self._frequency,
+            "capital_relation": self._comparison_relation,
+        }
+
+    def get_instruction_args_keys(self):
+        return ["capital_frequency", "capital_relation"]
+
+    def check_following(self, value):
+        words = instructions_util.nltk.word_tokenize(value)
+        capital_words = len([word for word in words if word.isupper()])
+        if self._comparison_relation == _COMPARISON_RELATION[0]:
+            return capital_words < self._frequency
+        else:
+            return capital_words >= self._frequency
+
+
+class QuotationChecker(Instruction):
+    """Checks response is wrapped with double quotation marks."""
+
+    def build_description(self):
+        self._description_pattern = "Wrap your entire response with double quotation marks."
+        return self._description_pattern
+
+    def get_instruction_args(self):
+        return None
+
+    def get_instruction_args_keys(self):
+        return []
+
+    def check_following(self, value):
+        value = value.strip()
+        return len(value) > 1 and value[0] == '"' and value[-1] == '"'
