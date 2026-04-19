@@ -7,7 +7,7 @@
 # Changes: replaced `instruction_following_eval.*` imports with local imports.
 
 """Registry of all instructions."""
-from benchmarks.ifeval import instructions
+from instruction_following_eval import instructions
 
 _KEYWORD = "keywords:"
 _LANGUAGE = "language:"

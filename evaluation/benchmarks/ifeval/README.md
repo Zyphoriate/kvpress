@@ -46,3 +46,11 @@ max_new_tokens: 1280
   ([`google-research/instruction_following_eval`](https://github.com/google-research/google-research/tree/aa633e5105c702b47a4dd836d9b6eca39984a0fe/instruction_following_eval)).
 - Language-detection instructions (`language:response_language`) require the optional `langdetect`
   package.  If it is not installed the check is skipped (returns `True`).
+
+## Upstream code (git subtree)
+
+The checker implementation lives in
+[`third_party/instruction_following_eval/`](third_party/instruction_following_eval/).
+It is a lightly adapted copy of the upstream Google Research code, managed as a
+**git subtree** (see [`third_party/README.md`](third_party/README.md) for the
+subtree add/pull commands and the list of adaptations).
