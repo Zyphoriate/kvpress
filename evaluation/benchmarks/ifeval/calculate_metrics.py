@@ -8,8 +8,12 @@ import nltk
 import pandas as pd
 
 # Add the third_party directory to sys.path so that `instruction_following_eval`
-# is importable as a package (scoped to this benchmark only).
-_THIRD_PARTY_DIR = os.path.join(os.path.dirname(__file__), "third_party")
+# is importable as a package.  The insertion is guarded to be idempotent and
+# only adds a single vendored directory.  Sub-modules within the package use
+# absolute `instruction_following_eval.*` imports which require the package root
+# to be on sys.path; importlib-based loading is therefore impractical without
+# also mutating sys.path.
+_THIRD_PARTY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "third_party")
 if _THIRD_PARTY_DIR not in sys.path:
     sys.path.insert(0, _THIRD_PARTY_DIR)
 

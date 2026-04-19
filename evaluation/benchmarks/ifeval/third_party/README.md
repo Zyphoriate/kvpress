@@ -1,4 +1,4 @@
-# third_party – upstream code managed via git subtree
+# third_party - upstream code managed via git subtree
 
 This directory holds a verbatim copy of upstream source code that is tracked
 as a **git subtree** inside the kvpress repository.
