@@ -12,7 +12,7 @@ import collections
 import dataclasses
 from typing import Dict, List, Optional, Union
 
-from benchmarks.ifeval import instructions_registry
+from instruction_following_eval import instructions_registry
 
 
 @dataclasses.dataclass

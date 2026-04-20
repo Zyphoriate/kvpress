@@ -1,11 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 1993-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+import sys
+
 import nltk
 import pandas as pd
 
-from benchmarks.ifeval.evaluation_lib import InputExample, compute_metrics
-from benchmarks.ifeval.evaluation_lib import test_instruction_following_loose, test_instruction_following_strict
+# Add the third_party directory to sys.path so that `instruction_following_eval`
+# is importable as a package.  The insertion is guarded to be idempotent and
+# only adds a single vendored directory.  Sub-modules within the package use
+# absolute `instruction_following_eval.*` imports which require the package root
+# to be on sys.path; importlib-based loading is therefore impractical without
+# also mutating sys.path.
+_THIRD_PARTY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "third_party")
+if _THIRD_PARTY_DIR not in sys.path:
+    sys.path.insert(0, _THIRD_PARTY_DIR)
+
+from instruction_following_eval.evaluation_lib import InputExample, compute_metrics  # noqa: E402
+from instruction_following_eval.evaluation_lib import (  # noqa: E402
+    test_instruction_following_loose,
+    test_instruction_following_strict,
+)
 
 
 def _ensure_nltk_data():

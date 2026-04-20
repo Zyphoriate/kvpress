@@ -17,7 +17,7 @@ import re
 import string
 from typing import Dict, Optional, Sequence, Union
 
-from benchmarks.ifeval import instructions_util
+from instruction_following_eval import instructions_util
 
 logger = logging.getLogger(__name__)
 
