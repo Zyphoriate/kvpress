@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from benchmarks.aime25.calculate_metrics import calculate_metrics as aime25_scorer
+from benchmarks.hotpot_qa.calculate_metrics import calculate_metrics as hotpot_qa_scorer
 from benchmarks.ifeval.calculate_metrics import calculate_metrics as ifeval_scorer
 from benchmarks.infinite_bench.calculate_metrics import calculate_metrics as infinite_bench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics as longbench_scorer
@@ -55,6 +56,7 @@ DATASET_REGISTRY = {
     "longbench-e": "Xnhyacinth/LongBench",
     "longbench-v2": "simonjegou/LongBench-v2",
     "needle_in_haystack": "alessiodevoto/paul_graham_essays",
+    "hotpot_qa": "simonjegou/hotpot_qa",
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
@@ -70,6 +72,7 @@ SCORER_REGISTRY = {
     "longbench-e": longbench_scorer_e,
     "longbench-v2": longbenchv2_scorer,
     "needle_in_haystack": needle_in_haystack_scorer,
+    "hotpot_qa": hotpot_qa_scorer,
     "aime25": aime25_scorer,
     "math500": math500_scorer,
     "ifeval": ifeval_scorer,
