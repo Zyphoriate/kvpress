@@ -81,7 +81,8 @@ class ChunkKVPress(BasePress):
 
         # If we have no complete chunks, delegate to the underlying scorer press
         if num_complete_chunks == 0:
-            return self.press.compress(module, hidden_states, keys, values, attentions, kwargs)
+            return keys, values
+            # return self.press.compress(module, hidden_states, keys, values, attentions, kwargs)
 
         # Reshape complete chunks for score calculation
         if num_complete_chunks > 0:
