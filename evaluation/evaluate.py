@@ -311,11 +311,7 @@ class EvaluationRunner:
         fraction = self.config.fraction
 
         logger.info(f"Loading dataset: {DATASET_REGISTRY[dataset_name]} (data_dir: {data_dir})")
-        # google/IFEval (the raw upstream source) only has a 'train' split.
-        # If a converted kvpress-format dataset is registered instead, remove
-        # this override so the standard 'test' split is used.
-        split = "train" if dataset_name == "ifeval" else "test"
-        df = load_dataset(DATASET_REGISTRY[dataset_name], data_dir=data_dir, split=split).to_pandas()
+        df = load_dataset(DATASET_REGISTRY[dataset_name], data_dir=data_dir, split="test").to_pandas()
 
         if fraction < 1.0:
             original_len = len(df)
@@ -323,15 +319,6 @@ class EvaluationRunner:
             logger.info(f"Sampled {len(df)} samples ({fraction:.2f}) from original {original_len} samples.")
 
         logger.info(f"Dataset loaded with {len(df)} entries.")
-
-        # IFEval field mapping: the dataset uses "prompt", "instruction_id_list", and "kwargs"
-        # instead of the framework's standard "context"/"question"/"answer_prefix"/"max_new_tokens".
-        if dataset_name == "ifeval":
-            df["context"] = df["prompt"]
-            df["question"] = ""
-            df["answer_prefix"] = ""
-            df["max_new_tokens"] = self.config.max_new_tokens or 1280
-            logger.info("IFEval field mapping applied: prompt -> context, empty question/answer_prefix.")
 
         # if we have needle in a haystack, we need to insert it in the context
         if self.config.dataset == "needle_in_haystack":
