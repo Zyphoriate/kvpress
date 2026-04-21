@@ -3,13 +3,21 @@
 
 import json
 import sys
+from pathlib import Path
 
 import pandas as pd
+
+# Add the thirdparty hotpot directory to the path so we can import the original evaluation code
+_thirdparty_dir = Path(__file__).parent / "thirdparty" / "hotpot"
+sys.path.insert(0, str(_thirdparty_dir))
 
 # Monkey-patch ujson with standard json in case ujson is not installed
 sys.modules.setdefault("ujson", json)
 
-from thirdparty.hotpot.hotpot_evaluate_v1 import exact_match_score, f1_score
+from hotpot_evaluate_v1 import exact_match_score, f1_score
+
+sys.path.pop(0)
+
 
 def calculate_metrics(df: pd.DataFrame) -> dict:
     """
