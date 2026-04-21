@@ -58,7 +58,7 @@ DATASET_REGISTRY = {
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
-    "ifeval": "google/IFEval",
+    "ifeval": "zzyppp/IFEval",
 }
 
 SCORER_REGISTRY = {

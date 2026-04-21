@@ -25,9 +25,3 @@ fp8: false    # Whether to use FP8 quantization (FineGrainedFP8Config() from tra
 model_kwargs:
   attn_implementation: null  
   dtype: "auto"
-
-# IFEval example configuration (uncomment to use):
-# dataset: "ifeval"
-# data_dir: null
-# max_new_tokens: 1280   # standard IFEval generation length
-
