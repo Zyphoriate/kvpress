@@ -25,3 +25,4 @@ fp8: false    # Whether to use FP8 quantization (FineGrainedFP8Config() from tra
 model_kwargs:
   attn_implementation: null  
   dtype: "auto"
+
