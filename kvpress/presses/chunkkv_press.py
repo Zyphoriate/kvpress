@@ -63,6 +63,11 @@ class ChunkKVPress(BasePress):
 
         assert attentions is None, "ChunkPress does not support attentions."
 
+        original_window_size = getattr(self.press, 'window_size', None)
+        if original_window_size is not None:
+            query_len = hidden_states.shape[1]
+            self.press.window_size = min(original_window_size, max(1, query_len - 1))
+
         kv_len = keys.shape[2]
 
         # 1. Calculate global scores first
@@ -81,8 +86,7 @@ class ChunkKVPress(BasePress):
 
         # If we have no complete chunks, delegate to the underlying scorer press
         if num_complete_chunks == 0:
-            return keys, values
-            # return self.press.compress(module, hidden_states, keys, values, attentions, kwargs)
+            return self.press.compress(module, hidden_states, keys, values, attentions, kwargs)
 
         # Reshape complete chunks for score calculation
         if num_complete_chunks > 0:
@@ -122,5 +126,8 @@ class ChunkKVPress(BasePress):
         # 5. Use gather to collect selected keys and values
         keys = keys.gather(2, indices).contiguous()
         values = values.gather(2, indices).contiguous()
+
+        if original_window_size is not None:
+            self.press.window_size = original_window_size
 
         return keys, values
