@@ -3,7 +3,6 @@
 
 from benchmarks.aime25.calculate_metrics import calculate_metrics as aime25_scorer
 from benchmarks.hotpot_qa.calculate_metrics import calculate_metrics as hotpot_qa_scorer
-from benchmarks.ifeval.calculate_metrics import calculate_metrics as ifeval_scorer
 from benchmarks.infinite_bench.calculate_metrics import calculate_metrics as infinite_bench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics as longbench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics_e as longbench_scorer_e
@@ -60,7 +59,6 @@ DATASET_REGISTRY = {
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
-    "ifeval": "zzyppp/IFEval",
 }
 
 SCORER_REGISTRY = {
@@ -75,7 +73,6 @@ SCORER_REGISTRY = {
     "hotpot_qa": hotpot_qa_scorer,
     "aime25": aime25_scorer,
     "math500": math500_scorer,
-    "ifeval": ifeval_scorer,
 }
 
 
