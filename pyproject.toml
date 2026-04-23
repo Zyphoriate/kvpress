@@ -35,6 +35,9 @@ eval = [
     "langdetect>=1.0.9",
     "nltk>=3.9.4",
     "immutabledict>=4.3.1",
+    "sacrebleu>=2.0.0",
+    "rouge-score>=0.1.2",
+    "evaluate>=0.4.0",
 ]
 flash-attn = [
     "flash-attn"
