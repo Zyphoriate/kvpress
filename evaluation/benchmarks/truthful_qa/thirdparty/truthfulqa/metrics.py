@@ -14,8 +14,6 @@ from rouge_score import rouge_scorer
 
 
 logger = logging.getLogger(__name__)
-# Initialize rouge scorer once for efficiency
-_rouge_scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeLsum'], use_stemmer=True)
 
 
 def _compute_bleu(targets, predictions):
@@ -39,6 +37,9 @@ def _compute_bleu(targets, predictions):
 
 def _compute_rouge(targets, predictions):
     """Compute ROUGE scores using rouge-score."""
+    # Lazy initialization to avoid adding logging handlers at import time
+    _rouge_scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeLsum'], use_stemmer=True)
+
     def _prepare_summary(summary):
         """Add newlines between sentences so rougeLsum is computed correctly."""
         return summary.replace(" . ", " .\n")
