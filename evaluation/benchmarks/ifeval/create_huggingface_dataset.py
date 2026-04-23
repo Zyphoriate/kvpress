@@ -4,7 +4,7 @@
 from datasets import Dataset, load_dataset
 
 # IFEval does not have a train/test split; use the full dataset as test.
-context_prefix = "You are a helpful assistant. Follow ALL of the user's instructions precisely and completely."
+context_prefix = "You are a helpful assistant. Only follow the instructions and do not output any other words."
 question_prefix = "{prompt}"
 answer_prefix = ""
 max_new_tokens = 1280
