@@ -418,7 +418,7 @@ class EvaluationRunner:
                 torch.cuda.empty_cache()  # Clear CUDA cache to free up memory
 
         elif self.config.group_by == "row":
-            logger.info("Starting inference...")
+            logger.info("Starting inference by row...")
             for _, row in tqdm(
                 self.df.iterrows(), total=len(self.df), desc="Running Inference"
             ):  # type: ignore[union-attr]
