@@ -107,7 +107,7 @@ class EvaluationConfig:
             assert self.needle_depth is not None, "needle_depth must be set for needle_in_haystack"
             assert self.max_context_length is not None, "max_context_length must be set for needle_in_haystack"
 
-        if self.dataset in ["ifeval"]:
+        if self.dataset in ["ifeval", "truthful_qa"]:
             self.group_by = "row"
         else:
             self.group_by = None
