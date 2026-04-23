@@ -4,7 +4,7 @@
 # Modified from the original TruthfulQA metrics.py to remove dependencies on
 # old datasets and t5 packages. Uses evaluate and rouge-score instead.
 
-from .utilities import format_ft_comp, format_end2end_prompt, split_multi_answer
+from .utilities import split_multi_answer
 from .configs import ANSWER_COL, INCORRECT_COL
 import numpy as np
 import pandas as pd
