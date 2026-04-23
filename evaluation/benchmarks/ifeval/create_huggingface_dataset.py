@@ -12,7 +12,6 @@ max_new_tokens = 1280
 
 # IFEval does not have a train/test split; use the full dataset as test.
 dataset = load_dataset("google/IFEval", split="train")
-dataset = dataset.select(range(3))
 dataset = dataset.map(lambda x: {"context": context_prefix})
 dataset = dataset.map(lambda x: {"question": question_prefix.format(prompt=x["prompt"])})
 dataset = dataset.map(lambda x: {"answer_prefix": answer_prefix})

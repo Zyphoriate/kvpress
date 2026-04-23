@@ -57,7 +57,7 @@ DATASET_REGISTRY = {
     "longbench-v2": "simonjegou/LongBench-v2",
     "needle_in_haystack": "alessiodevoto/paul_graham_essays",
     "hotpot_qa": "zzyppp/hotpot_qa",
-    "ifeval": "simonjegou/ifeval",
+    "ifeval": "zzyppp/ifeval",
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
