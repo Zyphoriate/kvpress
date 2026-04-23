@@ -8,7 +8,7 @@ from .utilities import split_multi_answer
 from .configs import ANSWER_COL, INCORRECT_COL
 import numpy as np
 import pandas as pd
-import warnings
+logger = logging.getLogger(__name__)
 import sacrebleu
 from rouge_score import rouge_scorer
 
@@ -78,22 +78,22 @@ def run_bleu_and_rouge(model_key, frame):
 
             # check that answer exists
             if pd.isnull(frame.loc[idx, model_key]):
-                warnings.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
+                logger.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, model_key]):
-                warnings.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
+                logger.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, ANSWER_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, ANSWER_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, INCORRECT_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, INCORRECT_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
 
             ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
@@ -171,7 +171,7 @@ def run_BLEURT(model_key, frame, cache_dir=None):
             # Restore original path
             sys.path = original_path
     except Exception as err:
-        warnings.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
+        logger.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
         return frame
 
     for calc in ['max', 'diff', 'acc']:
@@ -184,22 +184,22 @@ def run_BLEURT(model_key, frame, cache_dir=None):
 
             # check that answer exists
             if pd.isnull(frame.loc[idx, model_key]):
-                warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+                logger.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
                 continue
             if not len(frame.loc[idx, model_key]):
-                warnings.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+                logger.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, ANSWER_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, ANSWER_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, INCORRECT_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, INCORRECT_COL]):
-                warnings.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
                 continue
 
             ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
