@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 1993-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from datasets import Dataset, load_dataset
+
+# IFEval does not have a train/test split; use the full dataset as test.
+context_prefix = "You are a helpful assistant. Follow ALL of the user's instructions precisely and completely."
+question_prefix = "{prompt}"
+answer_prefix = ""
+max_new_tokens = 1280
+
+
+# IFEval does not have a train/test split; use the full dataset as test.
+dataset = load_dataset("google/IFEval", split="train")
+dataset = dataset.select(range(3))
+dataset = dataset.map(lambda x: {"context": context_prefix})
+dataset = dataset.map(lambda x: {"question": question_prefix.format(prompt=x["prompt"])})
+dataset = dataset.map(lambda x: {"answer_prefix": answer_prefix})
+dataset = dataset.map(lambda x: {"answer": ""})
+dataset = dataset.map(lambda x: {"task": "ifeval"})
+dataset = dataset.map(lambda x: {"max_new_tokens": max_new_tokens})
+
+df = dataset.to_pandas()
+df = df[["context", "question", "answer_prefix", "answer", "task", "max_new_tokens"]]
+
+# Push to hub as test split
+processed_dataset = Dataset.from_pandas(df)
+processed_dataset.push_to_hub("zzyppp/ifeval", split="test")
