@@ -154,9 +154,6 @@ def run_BLEURT(model_key, frame, cache_dir=None):
     """
     # Snapshot root logger state so we can restore it after BLEURT / TF
     # potentially pollutes it via logging.basicConfig().
-    root_logger = logging.getLogger()
-    original_root_handlers = root_logger.handlers.copy()
-
     try:
         # Avoid shadowing from local evaluate.py in the evaluation directory
         # by temporarily removing the current directory from sys.path
@@ -239,6 +236,4 @@ def run_BLEURT(model_key, frame, cache_dir=None):
                 elif calc == 'acc':
                     frame.loc[idx, col_name] = int(max(scores_true) > max(scores_false))
 
-    # Restore root logger to exactly the state it had before this function ran.
-    root_logger.handlers[:] = original_root_handlers
     return frame
