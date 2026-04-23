@@ -152,12 +152,16 @@ def run_BLEURT(model_key, frame, cache_dir=None):
 
     model_key: Column name of model answers (populate before running metrics)
     """
+    # Snapshot root logger state so we can restore it after BLEURT / TF
+    # potentially pollutes it via logging.basicConfig().
+    root_logger = logging.getLogger()
+    original_root_handlers = root_logger.handlers.copy()
+
     try:
         # Avoid shadowing from local evaluate.py in the evaluation directory
         # by temporarily removing the current directory from sys.path
         import sys
         import os
-        import logging
 
         # Save original sys.path
         original_path = sys.path.copy()
@@ -167,22 +171,17 @@ def run_BLEURT(model_key, frame, cache_dir=None):
         cwd = os.getcwd()
         sys.path = [p for p in sys.path if p != "" and p != cwd and not p.endswith("/evaluation")]
 
-        # Temporarily clear root logger handlers so that the evaluate library
-        # does not pollute the application's logging configuration.
-        root_logger = logging.getLogger()
-        original_handlers = root_logger.handlers.copy()
-        root_logger.handlers.clear()
-
         try:
             import evaluate
             bleurt = evaluate.load("bleurt", cache_dir=cache_dir)
         finally:
-            # Restore original path and root logger handlers
+            # Restore original path
             sys.path = original_path
-            root_logger.handlers[:] = original_handlers
     except Exception as err:
-        warnings.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
+        logger.warning(f"Failed to load BLEURT metric: {err}", stacklevel=2)
         return frame
+
+    print("Running BLEURT!")
 
     for calc in ['max', 'diff', 'acc']:
         col_name = '{0} BLEURT {1}'.format(model_key, calc)
@@ -240,4 +239,6 @@ def run_BLEURT(model_key, frame, cache_dir=None):
                 elif calc == 'acc':
                     frame.loc[idx, col_name] = int(max(scores_true) > max(scores_false))
 
+    # Restore root logger to exactly the state it had before this function ran.
+    root_logger.handlers[:] = original_root_handlers
     return frame
