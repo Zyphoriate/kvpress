@@ -79,22 +79,22 @@ def run_bleu_and_rouge(model_key, frame):
 
             # check that answer exists
             if pd.isnull(frame.loc[idx, model_key]):
-                logger.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
+                logger.warning("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, model_key]):
-                logger.warn("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
+                logger.warning("Answers missing for {0} {1}!".format(model_key, idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, ANSWER_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, ANSWER_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, INCORRECT_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, INCORRECT_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
 
             ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
@@ -156,6 +156,7 @@ def run_BLEURT(model_key, frame, cache_dir=None):
         # by temporarily removing the current directory from sys.path
         import sys
         import os
+        import logging
 
         # Save original sys.path
         original_path = sys.path.copy()
@@ -165,14 +166,21 @@ def run_BLEURT(model_key, frame, cache_dir=None):
         cwd = os.getcwd()
         sys.path = [p for p in sys.path if p != "" and p != cwd and not p.endswith("/evaluation")]
 
+        # Temporarily clear root logger handlers so that the evaluate library
+        # does not pollute the application's logging configuration.
+        root_logger = logging.getLogger()
+        original_handlers = root_logger.handlers.copy()
+        root_logger.handlers.clear()
+
         try:
             import evaluate
             bleurt = evaluate.load("bleurt", cache_dir=cache_dir)
         finally:
-            # Restore original path
+            # Restore original path and root logger handlers
             sys.path = original_path
+            root_logger.handlers[:] = original_handlers
     except Exception as err:
-        logger.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
+        warnings.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
         return frame
 
     for calc in ['max', 'diff', 'acc']:
@@ -185,22 +193,22 @@ def run_BLEURT(model_key, frame, cache_dir=None):
 
             # check that answer exists
             if pd.isnull(frame.loc[idx, model_key]):
-                logger.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+                logger.warning("Answers missing for {0}!".format(model_key), stacklevel=2)
                 continue
             if not len(frame.loc[idx, model_key]):
-                logger.warn("Answers missing for {0}!".format(model_key), stacklevel=2)
+                logger.warning("Answers missing for {0}!".format(model_key), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, ANSWER_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, ANSWER_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if pd.isnull(frame.loc[idx, INCORRECT_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
             if not len(frame.loc[idx, INCORRECT_COL]):
-                logger.warn("References missing for {0}!".format(idx), stacklevel=2)
+                logger.warning("References missing for {0}!".format(idx), stacklevel=2)
                 continue
 
             ref_true = split_multi_answer(frame.loc[idx, ANSWER_COL])
