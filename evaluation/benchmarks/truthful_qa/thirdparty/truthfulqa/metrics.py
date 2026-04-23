@@ -152,13 +152,24 @@ def run_BLEURT(model_key, frame, cache_dir=None):
     """
     try:
         # Avoid shadowing from local evaluate.py in the evaluation directory
-        import importlib.util
-        spec = importlib.util.find_spec("evaluate")
-        if spec is None:
-            raise ImportError("evaluate library not installed")
-        evaluate_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(evaluate_module)
-        bleurt = evaluate_module.load("bleurt", cache_dir=cache_dir)
+        # by temporarily removing the current directory from sys.path
+        import sys
+        import os
+
+        # Save original sys.path
+        original_path = sys.path.copy()
+
+        # Remove current working directory and empty string from path
+        # to prevent importing local evaluate.py
+        cwd = os.getcwd()
+        sys.path = [p for p in sys.path if p != "" and p != cwd and not p.endswith("/evaluation")]
+
+        try:
+            import evaluate
+            bleurt = evaluate.load("bleurt", cache_dir=cache_dir)
+        finally:
+            # Restore original path
+            sys.path = original_path
     except Exception as err:
         warnings.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
         return frame
