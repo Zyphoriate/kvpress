@@ -67,7 +67,7 @@ has_existing_results() {
 
 	# Remove empty subdirectories before checking (leave files untouched).
 	if [[ -d "$output_root" ]]; then
-		find "$output_root" -mindepth 1 -maxdepth 2 -type d -empty -delete
+		find "$output_root" -mindepth 1 -maxdepth 5 -type d -empty -delete
 	fi
 
 	# Only skip when actual result files exist (in base dir or one-level subdirs).
