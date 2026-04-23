@@ -151,8 +151,14 @@ def run_BLEURT(model_key, frame, cache_dir=None):
     model_key: Column name of model answers (populate before running metrics)
     """
     try:
-        import evaluate
-        bleurt = evaluate.load("bleurt", cache_dir=cache_dir)
+        # Avoid shadowing from local evaluate.py in the evaluation directory
+        import importlib.util
+        spec = importlib.util.find_spec("evaluate")
+        if spec is None:
+            raise ImportError("evaluate library not installed")
+        evaluate_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(evaluate_module)
+        bleurt = evaluate_module.load("bleurt", cache_dir=cache_dir)
     except Exception as err:
         warnings.warn(f"Failed to load BLEURT metric: {err}", stacklevel=2)
         return frame
