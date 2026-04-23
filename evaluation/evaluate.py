@@ -419,9 +419,9 @@ class EvaluationRunner:
             ), "Inconsistent 'answer_prefix' within the same context group detected."
 
             logger.info("Starting inference...")
-            completed_rows = 0
-            pbar = tqdm(total=len(self.df), desc="Running Inference") # type: ignore
-            for context, df_group in df_context_grouped:  # type: ignore[union-attr]
+            for context, df_group in tqdm(
+                df_context_grouped, total=self.df["context"].nunique(), desc="Running Inference"
+            ):  # type: ignore[union-attr]
                 questions = df_group["question"].to_list()
                 # Use max_new_tokens from config, or fallback to dataset's default for the task
                 max_new_tokens = self.config.max_new_tokens or df_group["max_new_tokens"].iloc[0]
@@ -441,10 +441,6 @@ class EvaluationRunner:
                     self.press.compression_ratio if self.press is not None else 0.0  # type: ignore[attr-defined]
                 )  # type: ignore[union-attr, attr-defined]
                 torch.cuda.empty_cache()  # Clear CUDA cache to free up memory
-
-                completed_rows += len(df_group)
-                pbar.update(len(df_group))
-            pbar.close()
 
         logger.info("Inference completed.")
 
