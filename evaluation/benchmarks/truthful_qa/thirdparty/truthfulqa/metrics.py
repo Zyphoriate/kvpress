@@ -8,11 +8,12 @@ from .utilities import split_multi_answer
 from .configs import ANSWER_COL, INCORRECT_COL
 import numpy as np
 import pandas as pd
-logger = logging.getLogger(__name__)
+import logging
 import sacrebleu
 from rouge_score import rouge_scorer
 
 
+logger = logging.getLogger(__name__)
 # Initialize rouge scorer once for efficiency
 _rouge_scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeLsum'], use_stemmer=True)
 
