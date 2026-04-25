@@ -4,9 +4,9 @@
 from datasets import Dataset, load_dataset
 
 # IFEval does not have a train/test split; use the full dataset as test.
-context_prefix = "You are a helpful assistant. Follow ALL of the user's instructions precisely and completely."
-question_prefix = "{prompt}"
-answer_prefix = ""
+context_prefix = "Strictly follow the instruction and complete the task: {prompt}"
+question_prefix = ""
+answer_prefix = "Response: "
 max_new_tokens = 1280
 
 
@@ -20,8 +20,8 @@ dataset = dataset.map(lambda x: {"task": "ifeval"})
 dataset = dataset.map(lambda x: {"max_new_tokens": max_new_tokens})
 
 df = dataset.to_pandas()
-df = df[["context", "question", "answer_prefix", "answer", "task", "max_new_tokens"]]
+df = df[["context", "question", "answer_prefix", "answer", "task", "prompt", "max_new_tokens"]] # type: ignore
 
 # Push to hub as test split
 processed_dataset = Dataset.from_pandas(df)
-processed_dataset.push_to_hub("zzyppp/ifeval", split="test")
+processed_dataset.push_to_hub("zypho/ifeval", split="test")
