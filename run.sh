@@ -50,7 +50,7 @@ if [[ "$press_name" == "chunckkv" ]]; then
 fi
 
 # Full ratio sweep used in this workspace.
-compression_ratios=(0 0.1 0.3 0.5 0.7 0.9)
+compression_ratios=(0 0.25 0.5 0.7 0.8 0.85)
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 eval_script="$script_dir/evaluation/evaluate.py"
