@@ -19,7 +19,7 @@ INPUT_DATA_PATH = f"{_third_party}/instruction_following_eval/data/input_data.js
 
 def calculate_metrics(df: pd.DataFrame) -> dict:
     prompt_to_response = {
-        row["question"]: row["predicted_answer"]
+        row["prompt"]: row["predicted_answer"]
         if isinstance(row["predicted_answer"], str)
         else ""
         for _, row in df.iterrows()
