@@ -11,19 +11,30 @@ on_interrupt() {
 trap on_interrupt INT TERM
 
 # Usage:
-#   ./run.sh <dataset/data_dir> <press_name> <gpu_ids_csv> [model]
+#   ./run.sh <dataset/data_dir> <press_name> <gpu_ids_csv> [model] [kwargs...]
 # Example:
 #   ./run.sh infinitebench/passkey chunckkv 2,3,4,5
+#   ./run.sh truthful_qa finch 5 --query_aware true
 
 if [[ $# -lt 3 ]]; then
-	echo "Usage: $0 <dataset/data_dir> <press_name> <gpu_ids_csv> [model]"
+	echo "Usage: $0 <dataset/data_dir> <press_name> <gpu_ids_csv> [model] [kwargs...]"
 	exit 1
 fi
 
 target="$1"
 press_name="$2"
 gpu_ids="$3"
-model="${4:-Qwen/Qwen3-8B}"
+shift 3
+
+# Determine if the next arg is a model name or a kwarg
+model="Qwen/Qwen3-8B"
+extra_args=()
+if [[ $# -gt 0 && "$1" != -* ]]; then
+	model="$1"
+	shift
+fi
+# Everything remaining is passed through as kwargs
+extra_args=("$@")
 
 if [[ "$target" == */* ]]; then
 	dataset="${target%%/*}"
@@ -39,7 +50,7 @@ if [[ "$press_name" == "chunckkv" ]]; then
 fi
 
 # Full ratio sweep used in this workspace.
-compression_ratios=(0.1 0.3 0.5 0.7 0.9)
+compression_ratios=(0 0.25 0.5 0.7 0.8 0.85)
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 eval_script="$script_dir/evaluation/evaluate.py"
@@ -66,8 +77,9 @@ has_existing_results() {
 	local base_dir="$output_root/$result_dir_name"
 
 	# Remove empty subdirectories before checking (leave files untouched).
-	if [[ -d "$output_root" ]]; then
-		find "$output_root" -mindepth 1 -maxdepth 5 -type d -empty -delete
+	if [[ -d "$base_dir" ]]; then
+		find "$base_dir" -mindepth 1 -maxdepth 5 -type d -empty -delete
+		rmdir --ignore-fail-on-non-empty "$base_dir"
 	fi
 
 	# Only skip when actual result files exist (in base dir or one-level subdirs).
@@ -91,6 +103,9 @@ echo "Press              : $press_name"
 echo "Model              : $model"
 echo "Devices            : $gpu_ids"
 echo "Ratios             : ${compression_ratios[*]}"
+if [[ ${#extra_args[@]} -gt 0 ]]; then
+	echo "Extra args         : ${extra_args[*]}"
+fi
 echo
 
 for ratio in "${compression_ratios[@]}"; do
@@ -108,6 +123,11 @@ for ratio in "${compression_ratios[@]}"; do
 	)
 	if [[ -n "$data_dir" ]]; then
 		eval_args+=(--data_dir "$data_dir")
+	fi
+
+	# Append any extra kwargs passed from the command line
+	if [[ ${#extra_args[@]} -gt 0 ]]; then
+		eval_args+=("${extra_args[@]}")
 	fi
 
 	if CUDA_VISIBLE_DEVICES="$gpu_ids" uv run "$eval_script" "${eval_args[@]}"; then

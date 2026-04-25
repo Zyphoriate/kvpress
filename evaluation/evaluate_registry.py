@@ -4,6 +4,7 @@
 from benchmarks.aime25.calculate_metrics import calculate_metrics as aime25_scorer
 from benchmarks.hotpot_qa.calculate_metrics import calculate_metrics as hotpot_qa_scorer
 from benchmarks.ifeval.calculate_metrics import calculate_metrics as ifeval_scorer
+from benchmarks.truthful_qa.calculate_metrics import calculate_metrics as truthful_qa_scorer
 from benchmarks.infinite_bench.calculate_metrics import calculate_metrics as infinite_bench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics as longbench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics_e as longbench_scorer_e
@@ -56,8 +57,9 @@ DATASET_REGISTRY = {
     "longbench-e": "Xnhyacinth/LongBench",
     "longbench-v2": "simonjegou/LongBench-v2",
     "needle_in_haystack": "alessiodevoto/paul_graham_essays",
-    "hotpot_qa": "zzyppp/hotpot_qa",
-    "ifeval": "zzyppp/ifeval",
+    "hotpot_qa": "zypho/hotpot_qa",
+    "ifeval": "zypho/ifeval",
+    "truthful_qa": "zypho/truthful_qa",
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
@@ -74,6 +76,7 @@ SCORER_REGISTRY = {
     "needle_in_haystack": needle_in_haystack_scorer,
     "hotpot_qa": hotpot_qa_scorer,
     "ifeval": ifeval_scorer,
+    "truthful_qa": truthful_qa_scorer,
     "aime25": aime25_scorer,
     "math500": math500_scorer,
 }
