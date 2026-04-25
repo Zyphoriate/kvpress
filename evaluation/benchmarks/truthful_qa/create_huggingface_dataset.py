@@ -44,4 +44,4 @@ df = df[
 
 # Push to hub as test split
 processed_dataset = Dataset.from_pandas(df)
-processed_dataset.push_to_hub("zzyppp/truthful_qa", split="test")
+processed_dataset.push_to_hub("zypho/truthful_qa", split="test")
