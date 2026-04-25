@@ -44,4 +44,4 @@ df = df[["context", "question", "answer_prefix", "answers", "task", "max_new_tok
 
 # Push to hub as test split
 processed_dataset = Dataset.from_pandas(df)
-processed_dataset.push_to_hub("zzyppp/hotpot_qa", config_name="distractor", split="test")
+processed_dataset.push_to_hub("zypho/hotpot_qa", config_name="distractor", split="test")
