@@ -107,11 +107,6 @@ class EvaluationConfig:
             assert self.needle_depth is not None, "needle_depth must be set for needle_in_haystack"
             assert self.max_context_length is not None, "max_context_length must be set for needle_in_haystack"
 
-        if self.dataset in ["ifeval", "truthful_qa"]:
-            self.group_by = "row"
-        else:
-            self.group_by = None
-
     def get_results_dir(self, output_dir: Path) -> Path:
         """
         Generates the unique save directory and filenames based on configuration parameters.
@@ -416,29 +411,6 @@ class EvaluationRunner:
                 )
                 self.df.loc[index, "predicted_answer"] = output["answer"]  # type: ignore[union-attr]
                 torch.cuda.empty_cache()  # Clear CUDA cache to free up memory
-
-        elif self.config.group_by == "row":
-            logger.info("Starting inference by row...")
-            for _, row in tqdm(
-                self.df.iterrows(), total=len(self.df), desc="Running Inference"
-            ):  # type: ignore[union-attr]
-                questions = [row["question"]]
-                max_new_tokens = self.config.max_new_tokens or row["max_new_tokens"]
-                answer_prefix = row["answer_prefix"]
-
-                output = self.pipeline(  # type: ignore[misc]
-                    row["context"],
-                    questions=questions,
-                    answer_prefix=answer_prefix,
-                    press=self.press,
-                    max_new_tokens=max_new_tokens,
-                    max_context_length=self.config.max_context_length,
-                )
-                self.df.loc[row.name, "predicted_answer"] = output["answers"][0]  # type: ignore[union-attr]
-                self.df.loc[row.name, "compression_ratio"] = (
-                    self.press.compression_ratio if self.press is not None else 0.0  # type: ignore[attr-defined]
-                )  # type: ignore[union-attr, attr-defined]
-                torch.cuda.empty_cache()
 
         else:
             df_context_grouped = self.df.groupby("context")  # type: ignore[union-attr]
