@@ -4,9 +4,9 @@
 from datasets import Dataset, load_dataset
 
 # IFEval does not have a train/test split; use the full dataset as test.
-context_prefix = "Strictly follow the instruction and complete the task: {prompt}"
+context_prefix = "You are a helpful assistant. Follow ALL of the user's instructions precisely and completely: {prompt}"
 question_prefix = ""
-answer_prefix = "Response: "
+answer_prefix = ""
 max_new_tokens = 1280
 
 
