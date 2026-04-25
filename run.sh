@@ -11,19 +11,30 @@ on_interrupt() {
 trap on_interrupt INT TERM
 
 # Usage:
-#   ./run.sh <dataset/data_dir> <press_name> <gpu_ids_csv> [model]
+#   ./run.sh <dataset/data_dir> <press_name> <gpu_ids_csv> [model] [kwargs...]
 # Example:
 #   ./run.sh infinitebench/passkey chunckkv 2,3,4,5
+#   ./run.sh truthful_qa finch 5 --query_aware true
 
 if [[ $# -lt 3 ]]; then
-	echo "Usage: $0 <dataset/data_dir> <press_name> <gpu_ids_csv> [model]"
+	echo "Usage: $0 <dataset/data_dir> <press_name> <gpu_ids_csv> [model] [kwargs...]"
 	exit 1
 fi
 
 target="$1"
 press_name="$2"
 gpu_ids="$3"
-model="${4:-Qwen/Qwen3-8B}"
+shift 3
+
+# Determine if the next arg is a model name or a kwarg
+model="Qwen/Qwen3-8B"
+extra_args=()
+if [[ $# -gt 0 && "$1" != -* ]]; then
+	model="$1"
+	shift
+fi
+# Everything remaining is passed through as kwargs
+extra_args=("$@")
 
 if [[ "$target" == */* ]]; then
 	dataset="${target%%/*}"
@@ -93,6 +104,9 @@ echo "Press              : $press_name"
 echo "Model              : $model"
 echo "Devices            : $gpu_ids"
 echo "Ratios             : ${compression_ratios[*]}"
+if [[ ${#extra_args[@]} -gt 0 ]]; then
+	echo "Extra args         : ${extra_args[*]}"
+fi
 echo
 
 for ratio in "${compression_ratios[@]}"; do
@@ -110,6 +124,11 @@ for ratio in "${compression_ratios[@]}"; do
 	)
 	if [[ -n "$data_dir" ]]; then
 		eval_args+=(--data_dir "$data_dir")
+	fi
+
+	# Append any extra kwargs passed from the command line
+	if [[ ${#extra_args[@]} -gt 0 ]]; then
+		eval_args+=("${extra_args[@]}")
 	fi
 
 	if CUDA_VISIBLE_DEVICES="$gpu_ids" uv run "$eval_script" "${eval_args[@]}"; then
