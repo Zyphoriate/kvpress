@@ -77,11 +77,11 @@ has_existing_results() {
 	local base_dir="$output_root/$result_dir_name"
 
 	# Remove empty subdirectories before checking (leave files untouched).
-	if [[ -d "$basedir" ]]; then
-		find "$basedir" -mindepth 1 -maxdepth 5 -type d -empty -delete
+	if [[ -d "$base_dir" ]]; then
+		find "$base_dir" -mindepth 1 -maxdepth 5 -type d -empty -delete
 	fi
 
-	rmdir "$basedir"
+	rmdir "$base_dir"
 
 	# Only skip when actual result files exist (in base dir or one-level subdirs).
 	if [[ -d "$base_dir" ]]; then
