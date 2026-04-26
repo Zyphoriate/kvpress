@@ -39,6 +39,11 @@ eval = [
     "rouge-score>=0.1.2",
     "evaluate>=0.4.0",
     "bleurt",
+    "sentence-transformers>=5.4.1",
+    "pysqlite3>=0.6.0",
+    "openai>=2.32.0",
+    "rank-bm25>=0.2.2",
+    "spacy>=3.8.14",
 ]
 flash-attn = [
     "flash-attn"
@@ -77,7 +82,7 @@ flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheel
 bleurt = { git = "https://github.com/google-research/bleurt.git" }
 
 [[tool.uv.index]]
-url = "https://mirrors.aliyun.com/pypi/simple"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 [[tool.uv.index]]
