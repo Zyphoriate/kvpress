@@ -6,6 +6,7 @@
 import logging
 import os
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -51,18 +52,55 @@ def _find_llama_model_dir() -> str:
     )
 
 
+def _download_large_file(file_id: str, dest: Path) -> None:
+    """Download a large file from Google Drive, handling the virus-scan confirmation.
+
+    Uses ``gdown`` when available (handles confirm token automatically),
+    otherwise falls back to the direct usercontent download URL.
+    """
+    try:
+        import gdown
+
+        gdown.download(id=file_id, output=str(dest), quiet=False)
+    except Exception:
+        # Fallback: direct download with explicit confirm=t for large files
+        import subprocess
+
+        url = (
+            f"https://drive.usercontent.google.com/download"
+            f"?id={file_id}&export=download&confirm=t"
+        )
+        subprocess.run(["wget", "-O", str(dest), url], check=True)
+
+
+def _is_valid_db(db_path: Path) -> bool:
+    """Check whether the file is a valid SQLite database (not an HTML warning page)."""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        result = cursor.fetchall()
+        conn.close()
+        return len(result) > 0
+    except Exception:
+        return False
+
+
 def _ensure_factscore_prerequisites(cache_dir: Path) -> None:
     """Download Wikipedia DB, demos, and stopwords if they are not already cached."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir_str = str(cache_dir)
 
-    # Wikipedia knowledge source database (20 GB)
+    # Wikipedia knowledge source database (20 GB) — gdown handles large file confirmation
     db_path = cache_dir / "enwiki-20230401.db"
-    if not db_path.exists():
+    if not db_path.exists() or (db_path.exists() and not _is_valid_db(db_path)):
+        if db_path.exists():
+            logging.critical("Removing invalid enwiki-20230401.db (was HTML warning page)...")
+            db_path.unlink()
         logging.critical("Downloading enwiki-20230401.db (this may take a while)...")
-        download_file(_ENWIKI_DB_ID, str(db_path), cache_dir_str)
+        _download_large_file(_ENWIKI_DB_ID, db_path)
 
-    # Demos for atomic fact generation
+    # Demos for atomic fact generation (small file, download_file handles zips)
     demos_dir = cache_dir / "demos"
     if not demos_dir.exists():
         logging.critical("Downloading demos.zip ...")
