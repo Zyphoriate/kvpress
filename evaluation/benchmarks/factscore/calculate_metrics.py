@@ -5,6 +5,7 @@
 
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -53,24 +54,62 @@ def _find_llama_model_dir() -> str:
 
 
 def _download_large_file(file_id: str, dest: Path) -> None:
-    """Download a large file from Google Drive, handling the virus-scan confirmation.
+    """Download a large file from Google Drive, handling the virus-scan confirmation page.
 
-    Uses ``gdown`` when available (handles confirm token automatically),
-    otherwise falls back to the direct usercontent download URL.
+    Uses ``gdown`` when available, otherwise falls back to a ``requests``-based
+    approach that extracts confirm / uuid tokens from the warning page.
     """
+    # --- try gdown first (handles all of this automatically) ---
     try:
         import gdown
 
         gdown.download(id=file_id, output=str(dest), quiet=False)
+        return
     except Exception:
-        # Fallback: direct download with explicit confirm=t for large files
-        import subprocess
+        pass
 
-        url = (
-            f"https://drive.usercontent.google.com/download"
-            f"?id={file_id}&export=download&confirm=t"
-        )
-        subprocess.run(["wget", "-O", str(dest), url], check=True)
+    # --- requests-based fallback ---
+    import requests
+
+    base_url = "https://docs.google.com/uc?export=download&id=" + file_id
+    session = requests.Session()
+
+    # Step 1: get the intermediate page (may be a warning for large files)
+    resp = session.get(base_url)
+    resp.raise_for_status()
+
+    # Step 2: parse confirm token + uuid from the virus-warning form if present
+    confirm = "t"  # default
+    match = re.search(r'name="confirm"\s+value="(.*?)"', resp.text)
+    if match:
+        confirm = match.group(1)
+
+    uuid = None
+    match = re.search(r'name="uuid"\s+value="(.*?)"', resp.text)
+    if match:
+        uuid = match.group(1)
+
+    # Step 3: build the final download URL
+    download_url = (
+        f"https://drive.usercontent.google.com/download"
+        f"?id={file_id}&export=download&confirm={confirm}"
+    )
+    if uuid:
+        download_url += f"&uuid={uuid}"
+
+    # Step 4: stream the actual file to disk
+    resp = session.get(download_url, stream=True)
+    resp.raise_for_status()
+
+    total = int(resp.headers.get("content-length", 0))
+    with open(dest, "wb") as f:
+        downloaded = 0
+        for chunk in resp.iter_content(chunk_size=8 * 1024 * 1024):
+            f.write(chunk)  # type: ignore[arg-type]
+            downloaded += len(chunk)
+            if total:
+                pct = downloaded / total * 100
+                logging.info(f"Downloading {dest.name}: {downloaded // 1024**2} / {total // 1024**2} MB ({pct:.0f}%)")
 
 
 def _is_valid_db(db_path: Path) -> bool:
@@ -116,6 +155,19 @@ def _ensure_factscore_prerequisites(cache_dir: Path) -> None:
         cwd_copy = Path("roberta_stopwords.txt")
         if not cwd_copy.exists():
             shutil.copy2(stopwords_src, cwd_copy)
+
+    # spaCy model required by atomic_facts.py
+    try:
+        import spacy
+
+        spacy.load("en_core_web_sm")
+    except OSError:
+        logging.critical("Downloading spaCy model en_core_web_sm ...")
+        import subprocess
+
+        subprocess.run(
+            [sys.executable, "-m", "spacy", "download", "en_core_web_sm"], check=True
+        )
 
 
 def calculate_metrics(df: pd.DataFrame) -> dict:
