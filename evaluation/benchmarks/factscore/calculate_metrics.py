@@ -26,7 +26,7 @@ from factscore.factscorer import FactScorer  # noqa: E402
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
-    level=logging.DEBUG,
+    # level=logging.DEBUG,
 )
 
 # Google Drive file IDs for FActScore prerequisites
@@ -49,65 +49,77 @@ def _configure_deepseek(cache_dir: Path) -> str:
     key_file.write_text(api_key)
     logging.info("Wrote API key to %s", key_file)
 
-    # Configure openai globals — cover old (<1.0) and new (>=1.0) library versions
-    import openai as oa
+    # Create explicit client (works with openai >= 1.0 and 2.x)
+    from openai import OpenAI
 
-    oa.api_key = api_key
-    logging.debug("openai.__version__ = %s", getattr(oa, "__version__", "unknown"))
-    os.environ["OPENAI_BASE_URL"] = api_base  # env-var fallback
-    try:
-        oa.api_base = api_base
-        logging.info("Set openai.api_base = %s", api_base)
-    except AttributeError:
-        logging.debug("openai.api_base not available (>= 1.0)")
-    try:
-        oa.base_url = api_base
-        logging.info("Set openai.base_url = %s", api_base)
-    except AttributeError:
-        logging.debug("openai.base_url not available (< 1.0)")
+    client = OpenAI(api_key=api_key, base_url=api_base)
+    logging.info("Created OpenAI client for %s", api_base)
 
-    # Monkey-patch model names and API shapes for DeepSeek compatibility
+    # Monkey-patch FActScore's API callers to use the new client
     from factscore import openai_lm as oal
 
-    _orig_chat = oal.call_ChatGPT
-
     def _patched_chat(message, model_name="deepseek-chat", max_len=1024, temp=0.7, verbose=False):
-        logging.debug("call_ChatGPT → deepseek-chat (len=%d, max_tokens=%d)", len(message), max_len)
-        result = _orig_chat(message, model_name=model_name, max_len=max_len, temp=temp, verbose=verbose)
-        logging.debug("call_ChatGPT response received")
-        return result
+        logging.info("call_ChatGPT → deepseek-chat (len=%d, max_tokens=%d)", len(message), max_len)
+        response_raw = None
+        received = False
+        num_rate_errors = 0
+        while not received:
+            try:
+                response_raw = client.chat.completions.create(
+                    model=model_name,
+                    messages=message,
+                    max_tokens=max_len,
+                    temperature=temp,
+                )
+                received = True
+            except Exception:
+                error = sys.exc_info()[0]
+                num_rate_errors += 1
+                logging.warning("ChatGPT API retry #%d: %s", num_rate_errors, error)
+                time.sleep(np.power(2, num_rate_errors))
+        # Convert to old-style dict for FActScore compatibility
+        response = response_raw.model_dump()
+        logging.info("call_ChatGPT response received")
+        return response
 
     oal.call_ChatGPT = _patched_chat
-    logging.info("Patched call_ChatGPT → deepseek-chat")
+    logging.info("Patched call_ChatGPT → deepseek-chat (new client)")
 
     # DeepSeek only supports Chat Completions; FActScore's InstructGPT path expects
     # Completion-response keys (response["choices"][0]["text"]), so we translate.
     def _patched_gpt3(prompt, model_name="deepseek-chat", max_len=512, temp=0.7,
                        num_log_probs=0, echo=False, verbose=False):
-        logging.debug("call_GPT3 → ChatCompletion (prompt_len=%d, model=%s)", len(prompt), model_name)
+        logging.info("call_GPT3 → ChatCompletion (prompt_len=%d, model=%s)", len(prompt), model_name)
         response = None
         received = False
         num_rate_errors = 0
         while not received:
             try:
-                response = oa.ChatCompletion.create(
+                response_raw = client.chat.completions.create(
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=max_len,
                     temperature=temp,
                 )
+                response = response_raw.model_dump()
+                # Inject Completion-style key that OpenAIModel._generate() expects
                 response["choices"][0]["text"] = response["choices"][0]["message"]["content"]
                 received = True
-                logging.debug("call_GPT3 response received (len=%d)", len(response["choices"][0]["text"]))
+                logging.info("call_GPT3 response received (len=%d)", len(response["choices"][0]["text"]))
             except Exception:
                 error = sys.exc_info()[0]
                 num_rate_errors += 1
-                logging.warning("API retry #%d: %s", num_rate_errors, error)
+                logging.warning("GPT3 API retry #%d: %s", num_rate_errors, error)
                 time.sleep(np.power(2, num_rate_errors))
         return response
 
     oal.call_GPT3 = _patched_gpt3
-    logging.info("Patched call_GPT3 → ChatCompletion (deepseek-chat)")
+    logging.info("Patched call_GPT3 → ChatCompletion (new client, deepseek-chat)")
+
+    # OpenAIModel.load_model() still sets openai.api_key — harmless with new client
+    import openai as oa
+
+    oa.api_key = api_key
 
     return str(key_file)
 
