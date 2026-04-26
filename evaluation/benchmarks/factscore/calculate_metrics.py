@@ -26,7 +26,7 @@ from factscore.factscorer import FactScorer  # noqa: E402
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
-    level=logging.CRITICAL,
+    level=logging.DEBUG,
 )
 
 # Google Drive file IDs for FActScore prerequisites
@@ -42,19 +42,29 @@ def _configure_deepseek(cache_dir: Path) -> str:
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     api_base = os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com")
 
+    logging.info("Configuring DeepSeek API: base=%s, key_len=%d", api_base, len(api_key))
+
     # Write key to disk — OpenAIModel.load_model() reads from a file
     key_file = cache_dir / "deepseek_api.key"
     key_file.write_text(api_key)
+    logging.info("Wrote API key to %s", key_file)
 
-    # Configure openai globals (works for both old and new openai library versions)
+    # Configure openai globals — cover old (<1.0) and new (>=1.0) library versions
     import openai as oa
 
     oa.api_key = api_key
+    logging.debug("openai.__version__ = %s", getattr(oa, "__version__", "unknown"))
+    os.environ["OPENAI_BASE_URL"] = api_base  # env-var fallback
     try:
         oa.api_base = api_base
+        logging.info("Set openai.api_base = %s", api_base)
     except AttributeError:
-        # openai >= 1.0 renamed api_base → base_url (handled below)
-        pass
+        logging.debug("openai.api_base not available (>= 1.0)")
+    try:
+        oa.base_url = api_base
+        logging.info("Set openai.base_url = %s", api_base)
+    except AttributeError:
+        logging.debug("openai.base_url not available (< 1.0)")
 
     # Monkey-patch model names and API shapes for DeepSeek compatibility
     from factscore import openai_lm as oal
@@ -62,13 +72,19 @@ def _configure_deepseek(cache_dir: Path) -> str:
     _orig_chat = oal.call_ChatGPT
 
     def _patched_chat(message, model_name="deepseek-chat", max_len=1024, temp=0.7, verbose=False):
-        return _orig_chat(message, model_name=model_name, max_len=max_len, temp=temp, verbose=verbose)
+        logging.debug("call_ChatGPT → deepseek-chat (len=%d, max_tokens=%d)", len(message), max_len)
+        result = _orig_chat(message, model_name=model_name, max_len=max_len, temp=temp, verbose=verbose)
+        logging.debug("call_ChatGPT response received")
+        return result
 
     oal.call_ChatGPT = _patched_chat
+    logging.info("Patched call_ChatGPT → deepseek-chat")
 
-    # DeepSeek only supports Chat Completions, so replace GPT-3 Completion calls
+    # DeepSeek only supports Chat Completions; FActScore's InstructGPT path expects
+    # Completion-response keys (response["choices"][0]["text"]), so we translate.
     def _patched_gpt3(prompt, model_name="deepseek-chat", max_len=512, temp=0.7,
                        num_log_probs=0, echo=False, verbose=False):
+        logging.debug("call_GPT3 → ChatCompletion (prompt_len=%d, model=%s)", len(prompt), model_name)
         response = None
         received = False
         num_rate_errors = 0
@@ -80,15 +96,18 @@ def _configure_deepseek(cache_dir: Path) -> str:
                     max_tokens=max_len,
                     temperature=temp,
                 )
+                response["choices"][0]["text"] = response["choices"][0]["message"]["content"]
                 received = True
+                logging.debug("call_GPT3 response received (len=%d)", len(response["choices"][0]["text"]))
             except Exception:
                 error = sys.exc_info()[0]
                 num_rate_errors += 1
-                logging.error("API error: %s (%d)", error, num_rate_errors)
+                logging.warning("API retry #%d: %s", num_rate_errors, error)
                 time.sleep(np.power(2, num_rate_errors))
         return response
 
     oal.call_GPT3 = _patched_gpt3
+    logging.info("Patched call_GPT3 → ChatCompletion (deepseek-chat)")
 
     return str(key_file)
 
@@ -224,26 +243,26 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
         Dictionary with ``score``, ``init_score``, ``respond_ratio``,
         ``num_facts_per_response``, and ``total`` keys.
     """
+    logging.info("calculate_metrics start: %d rows", len(df))
     topics = []
     generations = []
 
     for _, row in df.iterrows():
         topic = row.get("topic", "")
         if not isinstance(topic, str) or not topic.strip():
-            # Fallback: try to extract topic from the prompt context.
             context = row.get("context", "")
             if isinstance(context, str) and "bio of " in context:
                 topic = context.split("bio of ")[-1].rstrip(".")
             else:
                 topic = ""
         topics.append(topic.strip())
-
         pred = row.get("predicted_answer", "")
         generations.append(pred if isinstance(pred, str) else "")
 
-    # Filter out completely empty generations to avoid evaluation errors.
     valid_indices = [i for i, gen in enumerate(generations) if gen.strip()]
+    logging.info("Valid generations: %d / %d", len(valid_indices), len(generations))
     if not valid_indices:
+        logging.warning("No valid generations found — returning zeros")
         return {
             "score": 0.0,
             "init_score": 0.0,
@@ -256,10 +275,12 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
     valid_generations = [generations[i] for i in valid_indices]
 
     factscore_cache = Path(__file__).parent / ".cache"
+    logging.info("Cache dir: %s", factscore_cache)
     _ensure_factscore_prerequisites(factscore_cache)
 
     openai_key_path = _configure_deepseek(factscore_cache)
 
+    logging.info("Creating FactScorer (retrieval+ChatGPT)...")
     fs = FactScorer(
         model_name="retrieval+ChatGPT",
         openai_key=openai_key_path,
@@ -267,12 +288,14 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
         cache_dir=str(factscore_cache),
     )
 
+    logging.info("Calling FactScorer.get_score() with %d topics...", len(valid_topics))
     out = fs.get_score(
         topics=valid_topics,
         generations=valid_generations,
         gamma=10,
         verbose=True,
     )
+    logging.info("FactScorer.get_score() returned")
 
     metrics = {
         "score": round(float(out.get("score", 0.0)), 4),
@@ -284,4 +307,5 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
     if "init_score" in out:
         metrics["init_score"] = round(float(out["init_score"]), 4)
 
+    logging.info("calculate_metrics done: %s", metrics)
     return metrics
