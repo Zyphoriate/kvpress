@@ -26,7 +26,7 @@ from factscore.factscorer import FactScorer  # noqa: E402
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
-    level=logging.DEBUG,
+    # level=logging.DEBUG,
 )
 
 # Google Drive file IDs for FActScore prerequisites
