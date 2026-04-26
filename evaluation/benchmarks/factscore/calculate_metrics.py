@@ -5,9 +5,8 @@
 
 import logging
 import os
-import subprocess
+import shutil
 import sys
-import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +16,7 @@ _thirdparty = Path(__file__).parent / "thirdparty"
 if str(_thirdparty) not in sys.path:
     sys.path.insert(0, str(_thirdparty))
 
+from factscore.download_data import download_file  # noqa: E402
 from factscore.factscorer import FactScorer  # noqa: E402
 
 logging.basicConfig(
@@ -51,40 +51,33 @@ def _find_llama_model_dir() -> str:
     )
 
 
-def _download_file(file_id: str, dest: str) -> None:
-    """Download a file from Google Drive via gdown or wget."""
-    path = Path(dest)
-    if path.exists():
-        return
-
-    try:
-        import gdown
-
-        gdown.download(id=file_id, output=str(path), quiet=False)
-    except Exception:
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        subprocess.run(["wget", "-O", str(path), url], check=True)
-
-
 def _ensure_factscore_prerequisites(cache_dir: Path) -> None:
-    """Download Wikipedia DB and demos if they are not already cached."""
+    """Download Wikipedia DB, demos, and stopwords if they are not already cached."""
     cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir_str = str(cache_dir)
 
-    # Wikipedia knowledge source database
+    # Wikipedia knowledge source database (20 GB)
     db_path = cache_dir / "enwiki-20230401.db"
     if not db_path.exists():
         logging.critical("Downloading enwiki-20230401.db (this may take a while)...")
-        _download_file(_ENWIKI_DB_ID, str(db_path))
+        download_file(_ENWIKI_DB_ID, str(db_path), cache_dir_str)
 
     # Demos for atomic fact generation
     demos_dir = cache_dir / "demos"
     if not demos_dir.exists():
-        demos_zip = cache_dir / "demos.zip"
         logging.critical("Downloading demos.zip ...")
-        _download_file(_DEMOS_ZIP_ID, str(demos_zip))
-        with zipfile.ZipFile(demos_zip, "r") as zf:
-            zf.extractall(cache_dir)
-        demos_zip.unlink()
+        download_file(_DEMOS_ZIP_ID, str(cache_dir / "demos.zip"), cache_dir_str)
+
+    # roberta_stopwords.txt is required by npm.py and read from the working directory
+    stopwords_src = _thirdparty / "roberta_stopwords.txt"
+    if stopwords_src.exists():
+        stopwords_dst = cache_dir / "roberta_stopwords.txt"
+        if not stopwords_dst.exists():
+            shutil.copy2(stopwords_src, stopwords_dst)
+        # npm.py reads from cwd, so also place a copy there
+        cwd_copy = Path("roberta_stopwords.txt")
+        if not cwd_copy.exists():
+            shutil.copy2(stopwords_src, cwd_copy)
 
 
 def calculate_metrics(df: pd.DataFrame) -> dict:
