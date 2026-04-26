@@ -9,8 +9,10 @@ import re
 import shutil
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 # Add the local thirdparty copy of FActScore to PYTHONPATH.
@@ -32,25 +34,63 @@ _ENWIKI_DB_ID = "1Qu4JHWjpUKhGPaAW5UHhS5RJ545CVy4I"
 _DEMOS_ZIP_ID = "1sbW6pkYl6cc9gooD4WLaeoFKcAj3poZu"
 
 
-def _find_llama_model_dir() -> str:
-    """Locate a local Llama model under ``$HF_HOME/hub``."""
-    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-    hub_dir = Path(hf_home) / "hub"
+def _configure_deepseek(cache_dir: Path) -> str:
+    """Set up DeepSeek API as an OpenAI-compatible backend.
 
-    if not hub_dir.exists():
-        raise FileNotFoundError(f"Hugging Face hub directory not found: {hub_dir}")
+    Returns the path to a temporary API key file that FActScore can read.
+    """
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_base = os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com")
 
-    for model_dir in hub_dir.glob("models--*llama*"):
-        snapshots = model_dir / "snapshots"
-        if snapshots.exists():
-            for snapshot in snapshots.iterdir():
-                if snapshot.is_dir() and (snapshot / "config.json").exists():
-                    return str(snapshot)
+    # Write key to disk — OpenAIModel.load_model() reads from a file
+    key_file = cache_dir / "deepseek_api.key"
+    key_file.write_text(api_key)
 
-    raise FileNotFoundError(
-        f"No local Llama model found under {hub_dir}. "
-        "Please cache a Llama-compatible model (e.g. meta-llama/Llama-2-7b-hf) first."
-    )
+    # Configure openai globals (works for both old and new openai library versions)
+    import openai as oa
+
+    oa.api_key = api_key
+    try:
+        oa.api_base = api_base
+    except AttributeError:
+        # openai >= 1.0 renamed api_base → base_url (handled below)
+        pass
+
+    # Monkey-patch model names and API shapes for DeepSeek compatibility
+    from factscore import openai_lm as oal
+
+    _orig_chat = oal.call_ChatGPT
+
+    def _patched_chat(message, model_name="deepseek-chat", max_len=1024, temp=0.7, verbose=False):
+        return _orig_chat(message, model_name=model_name, max_len=max_len, temp=temp, verbose=verbose)
+
+    oal.call_ChatGPT = _patched_chat
+
+    # DeepSeek only supports Chat Completions, so replace GPT-3 Completion calls
+    def _patched_gpt3(prompt, model_name="deepseek-chat", max_len=512, temp=0.7,
+                       num_log_probs=0, echo=False, verbose=False):
+        response = None
+        received = False
+        num_rate_errors = 0
+        while not received:
+            try:
+                response = oa.ChatCompletion.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_len,
+                    temperature=temp,
+                )
+                received = True
+            except Exception:
+                error = sys.exc_info()[0]
+                num_rate_errors += 1
+                logging.error("API error: %s (%d)", error, num_rate_errors)
+                time.sleep(np.power(2, num_rate_errors))
+        return response
+
+    oal.call_GPT3 = _patched_gpt3
+
+    return str(key_file)
 
 
 def _download_large_file(file_id: str, dest: Path) -> None:
@@ -215,14 +255,15 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
     valid_topics = [topics[i] for i in valid_indices]
     valid_generations = [generations[i] for i in valid_indices]
 
-    model_dir = _find_llama_model_dir()
     factscore_cache = Path(__file__).parent / ".cache"
     _ensure_factscore_prerequisites(factscore_cache)
 
+    openai_key_path = _configure_deepseek(factscore_cache)
+
     fs = FactScorer(
-        model_name="retrieval+llama+npm",
+        model_name="retrieval+ChatGPT",
+        openai_key=openai_key_path,
         data_dir=str(factscore_cache),
-        model_dir=model_dir,
         cache_dir=str(factscore_cache),
     )
 
