@@ -72,12 +72,14 @@ def _configure_deepseek(cache_dir: Path) -> str:
                     temperature=temp,
                 )
                 received = True
+            except openai.AuthenticationError:
+                logging.error("DeepSeek auth failed — check DEEPSEEK_API_KEY balance")
+                raise
             except Exception:
                 error = sys.exc_info()[0]
                 num_rate_errors += 1
                 logging.warning("ChatGPT API retry #%d: %s", num_rate_errors, error)
                 time.sleep(np.power(2, num_rate_errors))
-        # Convert to old-style dict for FActScore compatibility
         response = response_raw.model_dump()
         logging.info("call_ChatGPT response received")
         return response
@@ -102,10 +104,12 @@ def _configure_deepseek(cache_dir: Path) -> str:
                     temperature=temp,
                 )
                 response = response_raw.model_dump()
-                # Inject Completion-style key that OpenAIModel._generate() expects
                 response["choices"][0]["text"] = response["choices"][0]["message"]["content"]
                 received = True
                 logging.info("call_GPT3 response received (len=%d)", len(response["choices"][0]["text"]))
+            except openai.AuthenticationError:
+                logging.error("DeepSeek auth failed — check DEEPSEEK_API_KEY balance")
+                raise
             except Exception:
                 error = sys.exc_info()[0]
                 num_rate_errors += 1
