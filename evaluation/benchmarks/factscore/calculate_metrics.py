@@ -5,7 +5,9 @@
 
 import logging
 import os
+import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +25,10 @@ logging.basicConfig(
     level=logging.CRITICAL,
 )
 
+# Google Drive file IDs for FActScore prerequisites
+_ENWIKI_DB_ID = "1Qu4JHWjpUKhGPaAW5UHhS5RJ545CVy4I"
+_DEMOS_ZIP_ID = "1sbW6pkYl6cc9gooD4WLaeoFKcAj3poZu"
+
 
 def _find_llama_model_dir() -> str:
     """Locate a local Llama model under ``$HF_HOME/hub``."""
@@ -32,7 +38,6 @@ def _find_llama_model_dir() -> str:
     if not hub_dir.exists():
         raise FileNotFoundError(f"Hugging Face hub directory not found: {hub_dir}")
 
-    # Search for any cached model whose directory name contains "llama".
     for model_dir in hub_dir.glob("models--*llama*"):
         snapshots = model_dir / "snapshots"
         if snapshots.exists():
@@ -44,6 +49,42 @@ def _find_llama_model_dir() -> str:
         f"No local Llama model found under {hub_dir}. "
         "Please cache a Llama-compatible model (e.g. meta-llama/Llama-2-7b-hf) first."
     )
+
+
+def _download_file(file_id: str, dest: str) -> None:
+    """Download a file from Google Drive via gdown or wget."""
+    path = Path(dest)
+    if path.exists():
+        return
+
+    try:
+        import gdown
+
+        gdown.download(id=file_id, output=str(path), quiet=False)
+    except Exception:
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        subprocess.run(["wget", "-O", str(path), url], check=True)
+
+
+def _ensure_factscore_prerequisites(cache_dir: Path) -> None:
+    """Download Wikipedia DB and demos if they are not already cached."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Wikipedia knowledge source database
+    db_path = cache_dir / "enwiki-20230401.db"
+    if not db_path.exists():
+        logging.critical("Downloading enwiki-20230401.db (this may take a while)...")
+        _download_file(_ENWIKI_DB_ID, str(db_path))
+
+    # Demos for atomic fact generation
+    demos_dir = cache_dir / "demos"
+    if not demos_dir.exists():
+        demos_zip = cache_dir / "demos.zip"
+        logging.critical("Downloading demos.zip ...")
+        _download_file(_DEMOS_ZIP_ID, str(demos_zip))
+        with zipfile.ZipFile(demos_zip, "r") as zf:
+            zf.extractall(cache_dir)
+        demos_zip.unlink()
 
 
 def calculate_metrics(df: pd.DataFrame) -> dict:
@@ -93,7 +134,7 @@ def calculate_metrics(df: pd.DataFrame) -> dict:
 
     model_dir = _find_llama_model_dir()
     factscore_cache = Path(__file__).parent / ".cache"
-    factscore_cache.mkdir(parents=True, exist_ok=True)
+    _ensure_factscore_prerequisites(factscore_cache)
 
     fs = FactScorer(
         model_name="retrieval+llama+npm",
