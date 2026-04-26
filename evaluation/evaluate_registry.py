@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from benchmarks.aime25.calculate_metrics import calculate_metrics as aime25_scorer
+from benchmarks.factscore.calculate_metrics import calculate_metrics as factscore_scorer
 from benchmarks.hotpot_qa.calculate_metrics import calculate_metrics as hotpot_qa_scorer
 from benchmarks.ifeval.calculate_metrics import calculate_metrics as ifeval_scorer
 from benchmarks.truthful_qa.calculate_metrics import calculate_metrics as truthful_qa_scorer
@@ -60,6 +61,7 @@ DATASET_REGISTRY = {
     "hotpot_qa": "zypho/hotpot_qa",
     "ifeval": "zypho/ifeval",
     "truthful_qa": "zypho/truthful_qa",
+    "factscore": "zypho/factscore",
     # Datasets used to be used for decoding compression
     "aime25": "alessiodevoto/aime25",
     "math500": "alessiodevoto/math500",
@@ -77,6 +79,7 @@ SCORER_REGISTRY = {
     "hotpot_qa": hotpot_qa_scorer,
     "ifeval": ifeval_scorer,
     "truthful_qa": truthful_qa_scorer,
+    "factscore": factscore_scorer,
     "aime25": aime25_scorer,
     "math500": math500_scorer,
 }

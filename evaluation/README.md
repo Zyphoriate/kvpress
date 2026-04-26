@@ -52,6 +52,7 @@ At the moment, we support the following standard popular benchmarks:
 - [Needle in a Haystack](benchmarks/needle_in_haystack/README.md)([hf link][Paul Graham's essays](https://huggingface.co/datasets/alessiodevoto/paul_graham_essays))
 - [IFEval](benchmarks/ifeval/README.md) ([hf link](https://huggingface.co/datasets/google/IFEval))
 - [TruthfulQA](benchmarks/truthful_qa/README.md) ([hf link](https://huggingface.co/datasets/domenicrosati/TruthfulQA))
+- [FActScore](benchmarks/factscore/README.md) ([hf link](https://huggingface.co/datasets/zypho/factscore))
 
 Each dataset directory is structured as follows:
 
