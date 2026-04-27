@@ -120,12 +120,19 @@ has_existing_results() {
 			components[$last_idx]="$thresh_fmt"
 			i=$((i+2))
 			;;
-			--needle_depth)
-				if [[ "$dataset" == "needle_in_haystack" ]]; then
-					components+=("needle_depth${args[$((i+1))]}")
+		--needle_depth)
+			if [[ "$dataset" == "needle_in_haystack" ]]; then
+				local nd_val="${args[$((i+1))]}"
+				# Python str(list) inserts spaces after commas: "[0, 25, 50]"
+				# Normalize the shell value (compact "[0,25,50]") to match.
+				if [[ "$nd_val" == [* ]]; then
+					nd_val="${nd_val//, /,}"   # collapse existing spaces
+					nd_val="${nd_val//,/, }"   # add a single space
 				fi
-				i=$((i+2))
-				;;
+				components+=("needle_depth${nd_val}")
+			fi
+			i=$((i+2))
+			;;
 			*)
 				i=$((i+1))
 				;;
