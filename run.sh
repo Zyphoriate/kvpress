@@ -78,66 +78,69 @@ has_existing_results() {
 	fi
 	components+=("$model_tag")
 	components+=("$press_name")
-	components+=("$ratio_fmt")
 
-	# Parse extra kwargs that affect the results directory name
+	# Parse extra kwargs that affect the results directory name.
+	# Collect values first, then append in the fixed order used by get_results_dir().
+	local fraction_val=""
+	local max_ctx_val=""
+	local query_aware_flag=""
+	local key_channel_cr_val=""
+	local thresh_val=""
+	local nd_val=""
+
 	local args=("$@")
 	local i=0
 	while [[ $i -lt ${#args[@]} ]]; do
 		case "${args[$i]}" in
-			--fraction)
-				local frac_val="${args[$((i+1))]}"
-				if [[ "$frac_val" != "1.0" && "$frac_val" != "1" ]]; then
-					local frac_fmt
-					frac_fmt=$(printf "fraction%.3f" "$frac_val")
-					components+=("$frac_fmt")
-				fi
-				i=$((i+2))
-				;;
-			--max_context_length)
-				components+=("max_context${args[$((i+1))]}")
-				i=$((i+2))
-				;;
-			--query_aware)
-				if [[ "${args[$((i+1))]}" == "true" ]]; then
-					components+=("query_aware")
-				fi
-				i=$((i+2))
-				;;
-			--key_channel_compression_ratio)
-				local kc_val="${args[$((i+1))]}"
-				local kc_fmt
-				kc_fmt=$(printf "key_channel_cr%.2f" "$kc_val")
-				components+=("$kc_fmt")
-				i=$((i+2))
-				;;
-		--threshold)
-			# threshold replaces compression_ratio as the last numeric component
-			local thresh_val="${args[$((i+1))]}"
-			local thresh_fmt
-			thresh_fmt=$(printf "%.2f" "$thresh_val")
-			local last_idx=$(( ${#components[@]} - 1 ))
-			components[$last_idx]="$thresh_fmt"
-			i=$((i+2))
-			;;
-		--needle_depth)
-			if [[ "$dataset" == "needle_in_haystack" ]]; then
-				local nd_val="${args[$((i+1))]}"
-				# Python str(list) inserts spaces after commas: "[0, 25, 50]"
-				# Normalize the shell value (compact "[0,25,50]") to match.
-				if [[ "$nd_val" == [* ]]; then
-					nd_val="${nd_val//, /,}"   # collapse existing spaces
-					nd_val="${nd_val//,/, }"   # add a single space
-				fi
-				components+=("needle_depth${nd_val}")
-			fi
-			i=$((i+2))
-			;;
-			*)
-				i=$((i+1))
-				;;
+			--fraction)            fraction_val="${args[$((i+1))]}"; i=$((i+2));;
+			--max_context_length)  max_ctx_val="${args[$((i+1))]}"; i=$((i+2));;
+			--query_aware)         query_aware_flag="${args[$((i+1))]}"; i=$((i+2));;
+			--key_channel_compression_ratio) key_channel_cr_val="${args[$((i+1))]}"; i=$((i+2));;
+			--threshold)           thresh_val="${args[$((i+1))]}"; i=$((i+2));;
+			--needle_depth)        nd_val="${args[$((i+1))]}"; i=$((i+2));;
+			*)                     i=$((i+1));;
 		esac
 	done
+
+	# Append in the exact order used by get_results_dir()
+	if [[ -n "$thresh_val" ]]; then
+		# threshold replaces compression_ratio
+		local thresh_fmt
+		thresh_fmt=$(printf "%.2f" "$thresh_val")
+		components+=("$thresh_fmt")
+	else
+		components+=("$ratio_fmt")
+	fi
+
+	if [[ -n "$fraction_val" && "$fraction_val" != "1.0" && "$fraction_val" != "1" ]]; then
+		local frac_fmt
+		frac_fmt=$(printf "fraction%.3f" "$fraction_val")
+		components+=("$frac_fmt")
+	fi
+
+	if [[ -n "$max_ctx_val" ]]; then
+		components+=("max_context${max_ctx_val}")
+	fi
+
+	if [[ "$query_aware_flag" == "true" ]]; then
+		components+=("query_aware")
+	fi
+
+	if [[ -n "$key_channel_cr_val" ]]; then
+		local kc_fmt
+		kc_fmt=$(printf "key_channel_cr%.2f" "$key_channel_cr_val")
+		components+=("$kc_fmt")
+	fi
+
+	if [[ -n "$nd_val" && "$dataset" == "needle_in_haystack" ]]; then
+		# Python str(list) inserts spaces after commas: "[0, 25, 50]"
+		# Normalize the shell value (compact "[0,25,50]") to match.
+		if [[ "$nd_val" == [* ]]; then
+			nd_val="${nd_val//, /,}"
+			nd_val="${nd_val//,/, }"
+		fi
+		components+=("needle_depth${nd_val}")
+	fi
 
 	local result_dir_name
 	result_dir_name=$(printf '%s__' "${components[@]}")
