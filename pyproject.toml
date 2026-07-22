@@ -8,7 +8,7 @@ authors = [
     { name = "Alessio Devoto" },
     { name = "David Austin" },
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.10"
 readme = "README.md"
 dependencies = [
     "numpy>=2.0.0,<3",
@@ -73,15 +73,7 @@ index-strategy = "unsafe-best-match"
 no-build-isolation-package = ["flash-attn"]
 
 [tool.uv.sources]
-flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu128torch2.11-cp312-cp312-linux_x86_64.whl" }
 bleurt = { git = "https://github.com/google-research/bleurt.git" }
-
-[[tool.uv.index]]
-url = "https://mirrors.aliyun.com/pypi/simple"
-default = true
-
-[[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cu128"
 
 [tool.black]
 line-length = 120
