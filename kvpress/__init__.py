@@ -8,10 +8,12 @@ from kvpress.presses.adakv_press import AdaKVPress
 from kvpress.presses.base_press import SUPPORTED_MODELS, BasePress
 from kvpress.presses.block_press import BlockPress
 from kvpress.presses.cam_press import CAMPress
+from kvpress.presses.cap_press import CapPress
 from kvpress.presses.chunk_press import ChunkPress
 from kvpress.presses.chunkkv_press import ChunkKVPress
 from kvpress.presses.compactor_press import CompactorPress
 from kvpress.presses.composed_press import ComposedPress
+from kvpress.presses.compression_ratio_decoding_press import CompressionRatioDecodingPress
 from kvpress.presses.criticalkv_press import CriticalAdaKVPress, CriticalKVPress
 from kvpress.presses.cur_press import CURPress
 from kvpress.presses.decoding_press import DecodingPress
@@ -29,6 +31,8 @@ from kvpress.presses.kvzap_press import KVzapPress
 from kvpress.presses.kvzip_press import KVzipPress
 from kvpress.presses.lagkv_press import LagKVPress
 from kvpress.presses.leverage_press import LeverageScorePress
+from kvpress.presses.lukv_press import LUKVPress
+from kvpress.presses.merging_press import MergingPress
 from kvpress.presses.non_causal_attention_press import NonCausalAttnPress
 from kvpress.presses.observed_attention_press import ObservedAttentionPress
 from kvpress.presses.per_layer_compression_press import PerLayerCompressionPress
@@ -79,6 +83,7 @@ __all__ = [
     "ExpectedAttentionStatsPress",
     "CAMPress",
     "DecodingPress",
+    "CompressionRatioDecodingPress",
     "PrefillDecodingPress",
     "CompactorPress",
     "LeverageScorePress",
@@ -87,4 +92,7 @@ __all__ = [
     "DMSPress",
     "FastKVzipPress",
     "KVComposePress",
+    "MergingPress",
+    "CapPress",
+    "LUKVPress",
 ]

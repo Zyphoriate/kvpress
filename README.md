@@ -119,6 +119,7 @@ Several presses inherit from `ScorerPress` ([source](kvpress/presses/scorer_pres
 - `CURPress` ([source](kvpress/presses/cur_press.py), [paper](https://arxiv.org/abs/2509.15038)): prune keys and values based on the CUR decomposition using approximate leverage scores.
 - `KVzapPress` ([source](kvpress/presses/kvzap/kvzap_press.py), [paper](https://arxiv.org/abs/2601.07891), [training](kvzap)): approximate KVzip+ using a fast surrogate model. To be used in conjunction with the `DMSPress`.
 - `FastKVzipPress` ([source](kvpress/presses/fastkvzip_press.py), [paper](https://arxiv.org/abs/2601.17668)): approximate KVzip through a lightweight gating mechanism.
+- `CapPress` ([source](kvpress/presses/cap_press.py), [paper](https://arxiv.org/abs/2604.25975)): evict tokens based on query-aware capacity scores from a log-determinant leverage proxy.
 
 Some presses rely on a different logic:
 - `ThinKPress` ([source](kvpress/presses/think_press.py), [paper](https://arxiv.org/abs/2407.21018)): compress the dimensions of the keys based on the channel attention score on the last queries 
@@ -133,6 +134,7 @@ Some presses rely on a different logic:
 
 Finally we provide wrapper presses that can be combined with other presses:
 - `AdaKVPress` ([source](kvpress/presses/adakv_press.py), [paper](https://arxiv.org/abs/2407.11550)): prune bottom scores of any `ScorerPress` but across all heads, achieving head-wise compressions 
+- `LUKVPress` ([source](kvpress/presses/lukv_press.py), [paper](https://arxiv.org/abs/2602.08585)): applies layer/head budget curves to a `ScorerPress`
 - `PerLayerCompressionPress` ([source](kvpress/presses/per_layer_compression_press.py)): compress each layer with a different compression ratio (experimental)
 - `ComposedPress` ([source](kvpress/presses/composed_press.py)): compose multiple presses together by chaining their forward hooks
 - `KeyRerotationPress` ([source](kvpress/presses/key_rerotation_press.py)): rerotate pruned keys to have continuous RoPE embeddings
@@ -141,9 +143,11 @@ Finally we provide wrapper presses that can be combined with other presses:
 - `CriticalKVPress` and `CriticalAdaKVPress` ([source](kvpress/presses/criticalkv_press.py), [paper](https://arxiv.org/abs/2502.03805)): refine the scores using the L1 norm of Wo @ values, coupled with a two-stage selection.
 - `BlockPress` ([source](kvpress/presses/block_press.py), [paper](https://arxiv.org/abs/2504.15364)): segment input sequence into non-overlapping blocks and compress iteratively (⚠️ not a true chunked-prefill implementation)
 - `DecodingPress` ([source](kvpress/presses/decoding_press.py)): allow for compression during decoding, see decoding section in this README.
+- `CompressionRatioDecodingPress` ([source](kvpress/presses/compression_ratio_decoding_press.py)): compress during decoding to keep a fixed fraction of all tokens seen so far.
 - `PrefillDecodingPress` ([source](kvpress/presses/prefill_decoding_press.py)): allow to compress both during prefilling and during decoding.
-- `DMSPress` ([source](kvpress/presses/dms_press.py), [paper](https://arxiv.org/abs/2506.05345)): evict keys and values with scores below a given threshold of any `ScorerPress` instead of relying on top-k scores. Support both prefilling and decoding (if decoding=True), but only supports dense-prefill and not sparse-prefill.
+- `DMSPress` ([source](kvpress/presses/dms_press.py), [paper](https://arxiv.org/abs/2506.05345)): evict keys and values with scores below a given threshold of any `ScorerPress` instead of relying on top-k scores. Support both prefilling and decoding (if decoding=True), but only supports dense-prefill and not sparse-prefill. ⚠️ Does not include the trained evictors from the DMS paper.
 - `CAMPress` ([source](kvpress/presses/cam_press.py), [paper](https://openreview.net/forum?id=LCTmppB165)): A decoding press that merges the kv cache of evicted tokens into keep tokens to preserve information.
+- `MergingPress` ([source](kvpress/presses/merging_press.py)): A prefill press that wraps any `ScorerPress` and folds each evicted token's value into its most cosine-similar surviving neighbor (keys preserved by default). 🤖 automated agent contribution
 
 For a detailed list of existing KV cache compression methods, check [Awesome-KV-Cache-Compression](https://github.com/October2001/Awesome-KV-Cache-Compression) or [Awesome-LLM-Compression](https://github.com/HuangOwen/Awesome-LLM-Compression?tab=readme-ov-file#kv-cache-compression)
 
