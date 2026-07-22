@@ -162,6 +162,24 @@ class KIVIPress(BasePress):
         assert self.group_size > 0, f"group_size must be positive, got {self.group_size}"
         assert self.residual_length >= 0, f"residual_length must be non-negative, got {self.residual_length}"
 
+    @property
+    def compression_ratio(self) -> float:
+        """
+        Effective memory compression ratio of the KV quantization (excluding residual overhead).
+
+        Computed as 1 minus the fraction of bits retained per element:
+        1 - (k_bits + v_bits) / 32 - 2 / group_size
+
+        The 2 / group_size term accounts for the scale and min metadata stored per group
+        (each stored in fp16). This represents the memory saved by the quantization scheme.
+
+        Returns
+        -------
+        float
+            Compression ratio in [0, 1). 0 means no compression (fp16), higher means more compression.
+        """
+        return 1 - (self.k_bits + self.v_bits) / 32 - 2 / self.group_size
+
     def compress(
         self,
         module: nn.Module,
